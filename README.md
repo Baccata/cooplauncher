@@ -4,11 +4,21 @@ A fast, terminal-based game launcher for **macOS** and **Linux**, designed to le
 
 This is the Scala Native port of the original [Coop Launcher](https://github.com/MBaliver/cooplauncher) for Windows — same idea, rebuilt as a single self-contained native binary with a TUI.
 
+## How it works
+
+Steam only extends Remote Play Together to games it launches itself. Coop Launcher piggybacks on that: you pick a rarely-used **donor game** from your library (e.g. RetroArch), and the launcher installs itself as that game's executable, backing up the original. From then on, launching the donor from Steam actually runs Coop Launcher — Steam believes you are playing the donor game the whole time.
+
+Consequences worth knowing upfront:
+
+- **Playtime and "last played" accrue to the donor game**, not to whatever you actually play through the launcher
+- **A donor game update, or "Verify integrity of game files", restores the original executable** — silently undoing the install. Just run the donor setup again if that happens
+- **Nothing else in your Steam setup is modified**: no manifests, no Steam configs, no other games. Restoring the backed-up executable (see below) fully reverts the donor
+
 ## Features
 
 - **Automatic Steam discovery** — scans your whole Steam library (all library folders, `appmanifest_*.acf` parsing), on both flat and directory cache layouts
 - **Banners in your terminal** — artwork rendered through a fallback chain: `chafa` (if installed) → kitty / sixel / iTerm2 native image protocols → 24-bit Unicode half-blocks → letter placeholder. No dependencies required
-- **Remote Play Together magic** — copies itself over the executable of a "donor" game (e.g. RetroArch), backing up the original, so Steam treats anything launched from here as that game
+- **Remote Play Together magic** — installs itself as the executable of a "donor" game of your choice, backing up the original (see [How it works](#how-it-works))
 - **Manual executable overrides** — point any game at a custom binary or launch script (`e`)
 - **Self-contained** — a single ~6 MB binary with no runtime dependencies (uses only `curl`, `stty` and friends, present on every macOS/Linux system)
 
@@ -80,7 +90,6 @@ Game output is captured to a per-game log:
 1. Run the launcher and press `d`
 2. Pick a game you're willing to use as a host (RetroArch is a common choice)
 3. Press `y` to confirm — the launcher replaces that game's executable with itself, then shows a success screen and exits
-4. Launch that game **from Steam** from now on: Coop Launcher opens with full Remote Play Together support
 
 To undo, restore the backup kept next to the installed copy:
 
