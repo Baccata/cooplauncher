@@ -79,10 +79,17 @@ Game output is captured to a per-game log:
 
 1. Run the launcher and press `d`
 2. Pick a game you're willing to use as a host (RetroArch is a common choice)
-3. Confirm — the launcher installs itself as that game's executable and exits
+3. Press `y` to confirm — the launcher replaces that game's executable with itself, then shows a success screen and exits
 4. Launch that game **from Steam** from now on: Coop Launcher opens with full Remote Play Together support
 
-The original binary is preserved as `<name>.bak` next to the installed copy — restore it any time to undo.
+To undo, restore the backup kept next to the installed copy:
+
+```bash
+mv <game-folder>/<name>.bak <game-folder>/<name>
+chmod +x <game-folder>/<name>
+```
+
+The `.bak` is only written the first time you install into a game, so it always holds the pristine original.
 
 ### Environment variables
 
