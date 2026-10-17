@@ -1,0 +1,9 @@
+.scala-build/
+.bsp/
+.bloop/
+.metals/
+.vscode/
+metals.sbt
+/cooplauncher
+/cooplauncher.exe
+out/

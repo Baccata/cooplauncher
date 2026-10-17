@@ -1,0 +1,92 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            target: macos-arm64
+          - os: ubuntu-22.04
+            target: linux-x64
+          - os: ubuntu-22.04-arm
+            target: linux-arm64
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install clang (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y clang
+
+      - uses: coursier/cache-action@v6
+
+      - uses: VirtusLab/scala-cli-setup@v1
+
+      - name: Test
+        run: scala-cli test .
+
+      - name: Package (release mode)
+        run: scala-cli --power package . -o cooplauncher --native-mode release
+
+      - name: Strip binary (Linux)
+        if: runner.os == 'Linux'
+        run: strip cooplauncher
+
+      - name: Ad-hoc codesign (macOS)
+        if: runner.os == 'macOS'
+        run: codesign --force --sign - cooplauncher
+
+      - name: Smoke test
+        run: ./cooplauncher --help
+
+      - name: Archive
+        run: tar -czf "cooplauncher-${{ matrix.target }}.tar.gz" cooplauncher
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cooplauncher-${{ matrix.target }}
+          path: cooplauncher-${{ matrix.target }}.tar.gz
+          if-no-files-found: error
+          retention-days: 2
+
+  release:
+    name: Publish release
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Checksums
+        run: cd dist && sha256sum *.tar.gz > SHA256SUMS
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.tar.gz
+            dist/SHA256SUMS
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
