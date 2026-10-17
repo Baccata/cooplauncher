@@ -158,6 +158,7 @@ object Tui:
     var donorVisible: List[SteamGame] = Nil
     var donorSel = 0
     var query = ""
+    var searching = false
     var sel = 0
     var status = ""
     var mode: Mode = MainMode
@@ -187,8 +188,8 @@ object Tui:
             "",
             "  ↑/↓ or j/k     move selection",
             "  enter / o       launch selected game",
-            "  /letters        type to filter the list",
-            "  esc             clear filter",
+            "  /               search — type to filter, enter accepts",
+            "  esc             clear filter / cancel",
             "  + / -           banner size",
             "  e               change executable for selected game",
             "  d               donor game setup",
@@ -251,7 +252,12 @@ object Tui:
             case _ =>
               PathFg + "  no donor configured — press d to set up" + Reset
           lines += donorLine
-          lines += "  " + Accent + "/" + Reset + query + "▏"
+          if searching then
+            lines += "  " + Accent + "/" + Reset + query + "▏"
+          else if query.nonEmpty then
+            lines += "  " + Dim + "/" + Reset + query
+          else
+            lines += Dim + "  / search" + Reset
           lines += Dim + "  " + ("─" * math.max(cols - 4, 4)) + Reset
 
           val selected = visible.lift(sel)
@@ -286,7 +292,7 @@ object Tui:
             }
 
           val hints = fit(
-            "  ↑↓ select · enter launch · e exe · d donor · r refresh · ? help · q quit",
+            "  / search · ↑↓ select · enter launch · e exe · d donor · r refresh · ? help · q quit",
             cols
           )
           lines += Dim + hints + Reset
@@ -451,11 +457,31 @@ object Tui:
         case MainMode =>
           k match
             case Up => move(-1)
-            case Char('k') => move(-1)
             case Down => move(1)
-            case Char('j') => move(1)
             case Enter =>
+              searching = false
               visible.lift(sel).foreach(launch)
+            case EscKey =>
+              searching = false
+              if query.nonEmpty then
+                query = ""
+                applyFilter()
+                sel = 0
+            case Backspace if searching =>
+              query = query.dropRight(1)
+              if query.isEmpty then searching = false
+              applyFilter()
+              sel = 0
+            case CtrlC => running = false
+            case Char('k') if !searching => move(-1)
+            case Char('j') if !searching => move(1)
+            case Char('/') if !searching => searching = true
+            case Char('+') | Char('=') => adjustBanner(8)
+            case Char('-') | Char('_') => adjustBanner(-8)
+            case Char(c) if searching =>
+              query += c
+              applyFilter()
+              sel = 0
             case Char('o') =>
               visible.lift(sel).foreach(launch)
             case Char('r') =>
@@ -466,19 +492,10 @@ object Tui:
             case Char('d') =>
               donorSel = 0
               mode = DonorMode
-            case Char('+') | Char('=') => adjustBanner(8)
-            case Char('-') | Char('_') => adjustBanner(-8)
             case Char('?') => mode = HelpMode
             case Char('q') => running = false
-            case CtrlC => running = false
-            case EscKey =>
-              if query.nonEmpty then
-                query = ""
-                applyFilter()
-            case Backspace =>
-              query = query.dropRight(1)
-              applyFilter()
             case Char(c) =>
+              searching = true
               query += c
               applyFilter()
               sel = 0

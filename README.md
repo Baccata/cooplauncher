@@ -64,8 +64,8 @@ Run without arguments for the interactive TUI:
 | --- | --- |
 | `↑` `↓` / `j` `k` | move selection |
 | `enter` / `o` | launch selected game |
-| type anything | filter the list |
-| `esc` | clear filter |
+| `/` | search — type to filter, `enter` accepts, `esc` clears |
+| `esc` | clear filter / cancel |
 | `+` / `-` | banner size |
 | `e` | change executable for selected game |
 | `d` | donor game setup (the Remote Play Together trick) |
