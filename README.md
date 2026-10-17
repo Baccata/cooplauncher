@@ -1,6 +1,6 @@
 # Coop Launcher
 
-A fast, terminal-based game launcher for **macOS** and **Linux**, designed to leverage Steam's **Remote Play Together** for non-Steam games and emulators.
+A fast, terminal-based game launcher for **macOS** and **Linux**, designed to leverage Steam's [**Remote Play Together**](https://store.steampowered.com/remoteplay#together) for games that don't support it.
 
 This is the Scala Native port of the original [Coop Launcher](https://github.com/MBaliver/cooplauncher) for Windows — same idea, rebuilt as a single self-contained native binary with a TUI.
 
