@@ -295,7 +295,8 @@ object Tui:
                 val letter = if g.name.nonEmpty then g.name.take(1).toUpperCase else "?"
                 lines += DimPurple + s"  [ $letter ]" + Reset
                 lines += Dim + "  " + fit(g.name, cols - 4) + Reset
-            val exe = DonorOps.launchablePath(g, config).getOrElse("(no executable found — press e)")
+            val exe = DonorOps.launchablePath(g, config)
+              .getOrElse("launched through Steam (no native executable)")
             lines += PathFg + "  " + fit(exe, cols - 4) + Reset
             lines += Dim + "  " + ("─" * math.max(cols - 4, 4)) + Reset
 
@@ -371,8 +372,11 @@ object Tui:
             case Right(()) => status = s"Launching ${g.name}… (output → ${new File(GameRunner.logDir, g.appId + ".log").getAbsolutePath})"
             case Left(err) => status = "⚠ " + err
         case None =>
-          status = s"No executable found for ${g.name}"
-          mode = InputMode(s"Executable path for ${g.name}:", Some(g), "")
+          GameRunner.launchViaSteam(g.appId) match
+            case Right(()) => status = s"Launching ${g.name} through Steam…"
+            case Left(err) =>
+              status = "⚠ " + err
+              mode = InputMode(s"Executable path for ${g.name}:", Some(g), "")
 
     def changeExe(g: SteamGame): Unit =
       mode = InputMode(s"Executable path for ${g.name} (empty to clear):", Some(g),

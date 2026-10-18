@@ -54,7 +54,9 @@ private def listGames(): Unit =
     println(s"Donor      : $donor")
     println(s"${games.length} games:")
     games.foreach { g =>
-      val exe = DonorOps.launchablePath(g, config).getOrElse("(none)")
+      val exe = DonorOps.launchablePath(g, config)
+        .orElse(if GameRunner.steamAvailable then Some("via Steam") else None)
+        .getOrElse("(none)")
       println(f"  ${g.appId}%-10s ${g.name}%-40s $exe")
     }
 
@@ -77,7 +79,9 @@ private def launchBy(target: String): Unit =
             case Left(err) =>
               System.err.println(s"Failed to launch ${game.name}: $err")
         case None =>
-          System.err.println(s"No executable found for ${game.name}. Use the TUI to set one ('e').")
+          GameRunner.launchViaSteam(game.appId) match
+            case Right(()) => println(s"Launching ${game.name} through Steam")
+            case Left(err) => System.err.println(s"Cannot launch ${game.name}: $err")
     case several =>
       System.err.println(s"Ambiguous match for '$target':")
       several.foreach(g => System.err.println(s"  ${g.appId}  ${g.name}"))

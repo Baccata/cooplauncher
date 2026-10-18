@@ -13,6 +13,7 @@ Steam only extends Remote Play Together to games it launches itself. Coop Launch
 - **Automatic Steam discovery** — scans your whole Steam library (all library folders, `appmanifest_*.acf` parsing), on both flat and directory cache layouts
 - **Banners in your terminal** — artwork rendered through a fallback chain: `chafa` (if installed) → kitty / sixel / iTerm2 native image protocols → 24-bit Unicode half-blocks → letter placeholder. No dependencies required
 - **Donor game** — pick any Remote Play Together game as the launch host; Coop Launcher keeps track of it without touching game files (see [How it works](#how-it-works))
+- **Proton-aware** — games without a native executable (Windows titles) are launched through Steam itself, so Proton, compat data and launch options keep working
 - **Manual executable overrides** — point any game at a custom binary or launch script (`e`)
 - **Self-contained** — a single ~6 MB binary with no runtime dependencies (uses only `curl`, `stty` and friends, present on every macOS/Linux system)
 
@@ -76,8 +77,9 @@ cooplauncher --banner 646570   # print a game banner (handy for picking COOP_IMG
 cooplauncher --help
 ```
 
-Game output is captured to a per-game log:
+Game output from directly-launched native games is captured to a per-game log:
 `~/Library/Logs/CoopLauncher/<appid>.log` on macOS, `~/.cache/cooplauncher/logs/` on Linux.
+Games launched through Steam log to Steam itself.
 
 ### The donor game
 

@@ -8,7 +8,7 @@ final case class SteamGame(
 )
 
 import java.io.{File, FileInputStream, FileOutputStream, InputStream}
-import scala.sys.process.{Process, ProcessIO}
+import scala.sys.process.{Process, ProcessIO, ProcessLogger}
 
 object GameRunner:
   def logDir: File =
@@ -24,6 +24,27 @@ object GameRunner:
     val logs = new File(dir, if Platform.isMac then "" else "cooplauncher/logs")
     logs.mkdirs()
     logs
+
+  /** Steam games without a native executable (Proton titles) are launched
+    * through Steam itself, which handles Proton, compat data and launch
+    * options. Directly exec'ing a Windows binary cannot work on Linux.
+    */
+  def launchViaSteam(appId: String): Either[String, Unit] =
+    steamLaunchArgs(appId) match
+      case Some(args) =>
+        try
+          Process(args).run(ProcessLogger(_ => ()))
+          Right(())
+        catch case e: Exception => Left(if e.getMessage != null then e.getMessage else e.toString)
+      case None => Left("Steam not found — set an executable manually")
+
+  private def steamLaunchArgs(appId: String): Option[Seq[String]] =
+    if TerminalImages.which("steam") then Some(Seq("steam", "-applaunch", appId))
+    else if TerminalImages.which("xdg-open") then
+      Some(Seq("xdg-open", s"steam://rungameid/$appId"))
+    else None
+
+  def steamAvailable: Boolean = steamLaunchArgs("0").isDefined
 
   def launch(exe: String, appId: String): Either[String, Unit] =
     val bin = new File(exe)
