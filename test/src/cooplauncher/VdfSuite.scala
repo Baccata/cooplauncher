@@ -57,3 +57,35 @@ class VdfSuite extends munit.FunSuite:
     assertEquals(Vdf.parse("\"unterminated"), None)
     assertEquals(Vdf.parse(""), None)
   }
+
+  test("parseDocument retains the root key") {
+    val doc = Vdf.parseDocument("\"AppState\"\n{\n \"appid\" \"228980\"\n}").get
+    assertEquals(doc.rootKey, "AppState")
+    assertEquals(doc.root.str("appid"), Some("228980"))
+  }
+
+  test("encode emits Steam's tab style and round-trips") {
+    val doc = Vdf.parseDocument(
+      "\"Store\"\n{\n \"k\" \"a \\\"q\\\"\"\n \"sub\"\n {\n  \"x\" \"1\"\n }\n}").get
+    val encoded = Vdf.encode(doc)
+    assertEquals(Vdf.parseDocument(encoded).get, doc)
+    assert(encoded.contains("\"k\"\t\t\"a \\\"q\\\"\""))
+    assert(encoded.contains("\t\"sub\"\n\t{\n\t\t\"x\"\t\t\"1\"\n\t}"))
+  }
+
+  test("preserves duplicate keys and order through a round-trip") {
+    val doc = Vdf.parseDocument("\"r\"\n{\n \"a\" \"1\"\n \"a\" \"2\"\n \"b\" \"3\"\n}").get
+    val out = Vdf.encode(doc)
+    assertEquals(Vdf.parseDocument(out).get, doc)
+    assert(out.indexOf("\"a\"\t\t\"1\"") < out.indexOf("\"a\"\t\t\"2\""))
+  }
+
+  test("updated descends the path and fails on non-object intermediates") {
+    val doc = Vdf.parseDocument("\"r\"\n{\n \"a\"\n {\n  \"b\" \"1\"\n }\n}").get
+    val out = doc.updated(List("a", "b"), VdfNode.Str("2")).toOption.get
+    assertEquals(out.root.at(List("a", "b")), Some(VdfNode.Str("2")))
+    assertEquals(doc.updated(List("a", "b", "c"), VdfNode.Str("x")),
+      Left("b is not an object"))
+    assertEquals(doc.updated(List("zzz", "b"), VdfNode.Str("x")),
+      Left("missing section zzz"))
+  }

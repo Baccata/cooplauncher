@@ -171,6 +171,7 @@ object Tui:
     var visible: List[SteamGame] = Nil
     var donorCandidates: List[SteamGame] = Nil
     var donorVisible: List[SteamGame] = Nil
+    var donorMsg: String = ""
     var donorSel = 0
     var query = ""
     var searching = false
@@ -237,7 +238,9 @@ object Tui:
             case None =>
               PathFg + "  no donor configured — select a game and press enter" + Reset
           lines += cur
-          lines += Dim + "  enter: set as donor · u: clear · esc: back" + Reset
+          lines += Dim + "  enter: set as donor · w: write launch options · u: clear · esc: back" + Reset
+          val msg = if donorMsg.isEmpty then None else Some(PathFg + "  " + donorMsg + Reset)
+          msg.foreach(lines += _)
           val wrapHint = (config.donor, SelfPath.get()) match
             case (Some(d), Some(self)) => List(
               Dim + s"""  so it grants Remote Play Together, set "${d.name}"'s Steam
@@ -258,7 +261,8 @@ object Tui:
             lines += "  browse the Steam store — games that do, cheapest first:"
             lines += Accent +
               link("https://store.steampowered.com/search/?category2=44&sort_by=Price_ASC") + Reset
-          val maxRows = math.max(rows - 7 - checking.size - wrapHint.size, 1)
+          val maxRows =
+            math.max(rows - 7 - checking.size - wrapHint.size - msg.size, 1)
           val from = math.max(math.min(donorSel - maxRows / 2, donorVisible.length - maxRows), 0)
           donorVisible.zipWithIndex
             .slice(from, from + maxRows)
@@ -434,6 +438,18 @@ object Tui:
       LauncherConfig.save(config)
       applyFilter()
 
+    def writeLaunchOptions(): Unit =
+      (config.donor, SelfPath.get(), SteamDiscovery.steamPath()) match
+        case (Some(d), Some(self), Some(root)) =>
+          SteamConfig.setLaunchOptions(root, d.appId, s"$self --wrap %command%") match
+            case Right(written) =>
+              donorMsg = s"launch options written to ${written.length} Steam account(s)" +
+                (if SteamConfig.steamRunning then " — restart Steam to apply" else "")
+            case Left(err) => donorMsg = "⚠ " + err
+        case (Some(_), _, None) => donorMsg = "⚠ Steam installation not found"
+        case (Some(_), None, _) => donorMsg = "⚠ cannot locate the launcher binary"
+        case _ => donorMsg = "⚠ set a donor first (enter)"
+
     def adjustBanner(d: Int): Unit =
       val (_, c) = term.size
       bannerWidth = math.min(math.max(bannerWidth + d, 24), math.max(c - 2, 24))
@@ -500,6 +516,7 @@ object Tui:
             case Down => move(1)
             case Char('j') => move(1)
             case Enter => donorVisible.lift(donorSel).foreach(setDonor)
+            case Char('w') => writeLaunchOptions()
             case Char('u') =>
               if config.donor.isDefined then
                 config = config.copy(donor = None)
