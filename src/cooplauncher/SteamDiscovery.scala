@@ -88,8 +88,16 @@ object SteamDiscovery:
       ).find(_.isFile)
     }
 
+  /** Resolves symlinks so that the same library reached through different paths
+    * (e.g. ~/.steam/steam -> ~/.local/share/Steam on Linux) dedupes correctly —
+    * java.io.File equality is plain string equality and would keep both.
+    */
+  private def canon(f: File): File =
+    try f.getCanonicalFile
+    catch case _: Exception => f.getAbsoluteFile
+
   def libraries(base: File): List[File] =
-    val seen = scala.collection.mutable.LinkedHashSet[File](base)
+    val seen = scala.collection.mutable.LinkedHashSet[File](canon(base))
     val vdf = new File(base, "steamapps/libraryfolders.vdf")
     if vdf.isFile then
       for
@@ -101,11 +109,11 @@ object SteamDiscovery:
         path <- obj.str("path").toSeq
         f = new File(path)
         if f.isDirectory
-      do seen += f
+      do seen += canon(f)
     seen.toList
 
   def discover(): List[SteamGame] =
-    steamPath().toList
+    val found = steamPath().toList
       .flatMap(libraries)
       .flatMap { lib =>
         val steamapps = new File(lib, "steamapps")
@@ -116,7 +124,22 @@ object SteamDiscovery:
           .flatMap(m => parseManifest(m, lib))
           .filterNot(g => shouldExclude(g.appId, g.name))
       }
-      .sortBy(_.name)
+    dedupeByAppId(found).sortBy(_.name)
+
+  /** appId is Steam's unique key: a stale manifest in a second library must not
+    * surface the same game twice. Keeps the first occurrence, unless a later
+    * one has a usable executable.
+    */
+  def dedupeByAppId(games: List[SteamGame]): List[SteamGame] =
+    val index = scala.collection.mutable.LinkedHashMap.empty[String, SteamGame]
+    games.foreach { g =>
+      index.get(g.appId) match
+        case Some(prev) =>
+          if !prev.executablePath.isDefined && g.executablePath.isDefined then
+            index(g.appId) = g
+        case None => index(g.appId) = g
+    }
+    index.values.toList
 
   private def parseManifest(acf: File, lib: File): Option[SteamGame] =
     Vdf.parse(readText(acf)).flatMap { root =>

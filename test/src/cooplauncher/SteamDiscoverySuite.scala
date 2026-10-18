@@ -58,3 +58,35 @@ class SteamDiscoverySuite extends munit.FunSuite:
     Files.write(g.toPath, "text".getBytes)
     assert(!SteamDiscovery.isNativeBinary(g))
   }
+
+  test("libraries dedupes a library reached through a symlink") {
+    val real = Files.createTempDirectory("cooplib-real").toFile
+    val link = new File(real.getParentFile, s"cooplib-link-${System.nanoTime}")
+    Files.createSymbolicLink(link.toPath, real.toPath)
+    try
+      val steamapps = new File(real, "steamapps")
+      steamapps.mkdirs()
+      val vdf = s""""libraryfolders"
+                  |{
+                  |  "0"
+                  |  {
+                  |    "path"    "${real.getAbsolutePath}"
+                  |  }
+                  |}""".stripMargin
+      Files.write(new File(steamapps, "libraryfolders.vdf").toPath, vdf.getBytes)
+
+      val libs = SteamDiscovery.libraries(link)
+      assertEquals(libs.length, 1, s"expected one library, got: ${libs.mkString(", ")}")
+      assertEquals(libs.head.getCanonicalPath, real.getCanonicalPath)
+    finally
+      link.delete()
+  }
+
+  test("dedupeByAppId keeps one entry per appId, preferring launchable ones") {
+    val noExe  = SteamGame("1", "Game A", "/a", None)
+    val withExe = SteamGame("1", "Game A", "/b", Some("/b/x"))
+    val other  = SteamGame("2", "Game B", "/c", None)
+    val out = SteamDiscovery.dedupeByAppId(List(noExe, withExe, other))
+    assertEquals(out.map(_.appId), List("1", "2"))
+    assertEquals(out.head.executablePath, Some("/b/x"))
+  }
