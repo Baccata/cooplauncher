@@ -91,6 +91,10 @@ Game output is captured to a per-game log:
 2. Pick a game you're willing to use as a host (RetroArch is a common choice)
 3. Press `y` to confirm — the launcher replaces that game's executable with itself, then shows a success screen and exits
 
+The donor list only offers games that support Remote Play Together, resolved
+from the Steam store and cached locally (`~/.cache/cooplauncher/rpt_cache.json`,
+macOS: `~/Library/Caches/CoopLauncher/`) to stay within API rate limits.
+
 To undo, restore the backup kept next to the installed copy:
 
 ```bash

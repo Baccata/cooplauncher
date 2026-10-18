@@ -155,6 +155,7 @@ object Tui:
     var config = LauncherConfig.load()
     var all: List[SteamGame] = Nil
     var visible: List[SteamGame] = Nil
+    var donorCandidates: List[SteamGame] = Nil
     var donorVisible: List[SteamGame] = Nil
     var donorSel = 0
     var query = ""
@@ -202,6 +203,9 @@ object Tui:
             "  anything launched from here. The original binary is",
             "  kept as <name>.bak.",
             "",
+            "  The donor list only offers games that support Remote Play",
+            "  Together (queried from the Steam store and cached locally).",
+            "",
             Dim + "  Developed by Matheus Baliver — github.com/MBaliver" + Reset
           )
           help.foreach(l => lines += fit(l, cols))
@@ -229,14 +233,24 @@ object Tui:
           lines += cur
           lines += Dim + "  enter: install launcher here · esc: back" + Reset
           lines += Accent + "  ─" * math.max(cols / 2 - 2, 4) + Reset
-          val maxRows = math.max(rows - 7, 1)
+          val pending = RemotePlay.pendingCount
+          val checking =
+            if pending > 0 then
+              Some(Dim + s"  checking Remote Play Together support — $pending left" + Reset)
+            else None
+          checking.foreach(lines += _)
+          val maxRows = math.max(rows - 7 - checking.size, 1)
           val from = math.max(math.min(donorSel - maxRows / 2, donorVisible.length - maxRows), 0)
           donorVisible.zipWithIndex
             .slice(from, from + maxRows)
             .foreach { (g, i) =>
               val idx = from + i
               val isDonor = DonorOps.isDonorGame(g, config)
-              val tag = if isDonor then Accent + " ●" + Reset else "  "
+              val confirmed = RemotePlay.statusOf(g.appId).contains(true)
+              val tag =
+                if isDonor then Accent + " ●" + Reset
+                else if confirmed then Accent + " ✓" + Reset
+                else "  "
               if idx == donorSel then
                 lines += SelBg + SelFg + Bold + tag + " " + fit(g.name, cols - 8) + Reset
               else
@@ -329,8 +343,16 @@ object Tui:
         if q.isEmpty then all
         else all.filter(_.name.toLowerCase.contains(q))
       visible = src.filterNot(g => DonorOps.isDonorGame(g, config))
-      donorVisible = all.sortBy(_.name)
+      donorCandidates = all.sortBy(_.name)
+      recomputeDonorVisible()
       if sel >= visible.length then sel = math.max(visible.length - 1, 0)
+
+    /** Donor candidates minus games known to lack Remote Play Together support.
+      * Unknown-status games stay listed so the picker still works offline.
+      */
+    def recomputeDonorVisible(): Unit =
+      donorVisible = donorCandidates.filterNot(g => RemotePlay.statusOf(g.appId).contains(false))
+      if donorSel >= donorVisible.length then donorSel = math.max(donorVisible.length - 1, 0)
 
     def requestBanners(): Unit =
       if TerminalImages.strategy != TerminalImages.Off && mode == MainMode then
@@ -491,6 +513,7 @@ object Tui:
               visible.lift(sel).foreach(changeExe)
             case Char('d') =>
               donorSel = 0
+              RemotePlay.request(donorCandidates.map(_.appId))
               mode = DonorMode
             case Char('?') => mode = HelpMode
             case Char('q') => running = false
@@ -505,6 +528,10 @@ object Tui:
     Runtime.getRuntime.addShutdownHook(new Thread(() => term.leave()))
     bannerCache = new Prefetcher(() => bannerWidth, () => redraw())
     bannerCache.start()
+    RemotePlay.start { () =>
+      lock.synchronized(recomputeDonorVisible())
+      redraw()
+    }
 
     try
       refreshGames()
