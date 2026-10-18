@@ -105,7 +105,7 @@ object TerminalImages:
       sb ++= "\u001b\\"
       first = false
       i = end
-    sb.result
+    sb.result()
 
   private def sixelEscape(img: RgbImage): String =
     val (palette, idx) = quantize(img, 256)
@@ -149,13 +149,13 @@ object TerminalImages:
         if any then
           sb ++= "#"
           sb ++= ci.toString
-          sb ++= buf.result
+          sb ++= buf.result()
           colorEmitted = true
       }
       sb += '-'
       y += 6
     sb ++= "\u001b\\"
-    sb.result
+    sb.result()
 
   private def flushRun(sb: StringBuilder, ch: Int, len: Int): Unit =
     if len > 0 && ch >= 0 then
@@ -186,7 +186,7 @@ object TerminalImages:
       sb ++= "\u001b[0m"
       if y + 2 < img.height then sb += '\n'
       y += 2
-    sb.result
+    sb.result()
 
   def resize(img: RgbImage, w: Int, h: Int): RgbImage =
     if img.width == w && img.height == h then img
@@ -324,4 +324,4 @@ object TerminalImages:
       sb += (if i + 1 < bytes.length then alpha((trip >> 6) & 63) else '=')
       sb += (if i + 2 < bytes.length then alpha(trip & 63) else '=')
       i += 3
-    sb.result
+    sb.result()

@@ -323,7 +323,7 @@ object Tui:
         if i < ls.length - 1 then sb ++= "\r\n"
       }
       sb ++= s"${Esc}[0J"
-      System.out.print(sb.result)
+      System.out.print(sb.result())
       System.out.flush()
     }
 
