@@ -172,6 +172,9 @@ object Tui:
     val (_, cols) = term.size
     var bannerWidth = math.min(math.max((cols * 4) / 5, 30), math.max(cols - 2, 30))
     var bannerCache: Prefetcher = null
+    val imageProtocol = TerminalImages.strategy match
+      case TerminalImages.Kitty | TerminalImages.Iterm | TerminalImages.Sixel => true
+      case _ => false
 
     def redraw(): Unit = lock.synchronized {
       val (rows, cols) = term.size
@@ -278,14 +281,26 @@ object Tui:
           lines += Dim + "  " + ("─" * math.max(cols - 4, 4)) + Reset
 
           val selected = visible.lift(sel)
+          val selectedArt = selected.flatMap(g => bannerCache.banner(g.appId))
           val showPreview = rows >= 28 && selected.isDefined
           val previewLines =
-            if showPreview then math.max(bannerWidth * 215 / 460 / 2, 4) + 2 else 0
+            if !showPreview then 0
+            else
+              // Measure the preview height instead of estimating it: the old
+              // truncated guess (w*215/460/2) undershot the real banner by a
+              // row for many widths, pushing the whole frame past the screen
+              // edge and scrolling the terminal mid-redraw.
+              val rendered = selectedArt match
+                case Some(art) if !imageProtocol => art.linesIterator.length
+                case Some(_) => // kitty/iterm/sixel art occupies cells, not lines
+                  math.min(math.max(math.round(bannerWidth * 215f / 460 / 2), 4), 22)
+                case None => 2 // placeholder letter + name
+              rendered + 2
           val maxRows = math.max(rows - 6 - previewLines, 1)
 
           if showPreview && selected.isDefined then
             val g = selected.get
-            bannerCache.banner(g.appId) match
+            selectedArt match
               case Some(art) =>
                 art.linesIterator.foreach(l => lines += "  " + l)
               case None =>
@@ -319,7 +334,7 @@ object Tui:
       if TerminalImages.strategy == TerminalImages.Kitty then
         sb ++= TerminalImages.kittyClearImages()
       sb ++= s"${Esc}[H"
-      val ls = lines.result()
+      val ls = lines.result().take(rows)
       ls.zipWithIndex.foreach { (l, i) =>
         sb ++= l
         sb ++= s"${Esc}[K"
