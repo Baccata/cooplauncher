@@ -13,6 +13,10 @@ object Tui:
   private def fg(r: Int, g: Int, b: Int) = s"${Esc}[38;2;$r;$g;${b}m"
   private def bg(r: Int, g: Int, b: Int) = s"${Esc}[48;2;$r;$g;${b}m"
 
+  /** OSC 8 terminal hyperlink; terminals without support just show the text. */
+  private def link(url: String): String =
+    s"${Esc}]8;;$url${Esc}\\$url${Esc}]8;;${Esc}\\"
+
   private val NameFg = fg(235, 235, 235)
   private val PathFg = fg(144, 140, 160)
   private val DimPurple = fg(144, 140, 175)
@@ -26,7 +30,6 @@ object Tui:
   private case object HelpMode extends Mode
   private case class InputMode(label: String, game: Option[SteamGame], buf: String) extends Mode
   private case class ConfirmMode(label: String, onYes: () => Unit) extends Mode
-  private case class DoneMode(msg: String) extends Mode
 
   private sealed trait Key
   private object Up extends Key
@@ -178,11 +181,6 @@ object Tui:
         if s.length <= w then s else s.take(math.max(w - 1, 1)) + "…"
 
       mode match
-        case DoneMode(msg) =>
-          msg.linesIterator.foreach(l => lines += "  " + fit(l, cols))
-          lines += ""
-          lines += Dim + "  press any key to exit" + Reset
-
         case HelpMode =>
           val help = List(
             "  Coop Launcher — Help",
@@ -239,6 +237,11 @@ object Tui:
               Some(Dim + s"  checking Remote Play Together support — $pending left" + Reset)
             else None
           checking.foreach(lines += _)
+          if donorVisible.isEmpty then
+            lines += PathFg + "  none of your installed games support Remote Play Together" + Reset
+            lines += "  browse the Steam store — games that do, cheapest first:"
+            lines += Accent +
+              link("https://store.steampowered.com/search/?category2=44&sort_by=Price_ASC") + Reset
           val maxRows = math.max(rows - 7 - checking.size, 1)
           val from = math.max(math.min(donorSel - maxRows / 2, donorVisible.length - maxRows), 0)
           donorVisible.zipWithIndex
@@ -383,14 +386,12 @@ object Tui:
 
     def installDonor(g: SteamGame): Unit =
       DonorOps.install(g, config) match
-        case Right(target) =>
+        case Right(_) =>
           config = LauncherConfig.load()
-          mode = DoneMode(
-            s"✅ Installed into donor game!\n\n" +
-              s"  donor: ${g.name}\n" +
-              s"  target: $target\n\n" +
-              s"  Launch \"${g.name}\" from your Steam Library now to start" +
-              s" Coop Launcher with Remote Play Together support.")
+          applyFilter()
+          mode = MainMode
+          status =
+            s"✅ Installed into ${g.name} — launch it from your Steam library to start Coop Launcher"
         case Left(err) =>
           status = "⚠ " + err
 
@@ -440,8 +441,6 @@ object Tui:
 
     def handleKey(k: Key): Unit =
       mode match
-        case DoneMode(_) => running = false
-
         case HelpMode => mode = MainMode
 
         case m: InputMode =>
