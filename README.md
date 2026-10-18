@@ -6,19 +6,13 @@ This is the Scala Native port of the original [Coop Launcher](https://github.com
 
 ## How it works
 
-Steam only extends Remote Play Together to games it launches itself. Coop Launcher piggybacks on that: you pick a rarely-used **donor game** from your library (e.g. RetroArch), and the launcher installs itself as that game's executable, backing up the original. From then on, launching the donor from Steam actually runs Coop Launcher — Steam believes you are playing the donor game the whole time.
-
-Consequences worth knowing upfront:
-
-- **Playtime and "last played" accrue to the donor game**, not to whatever you actually play through the launcher
-- **A donor game update, or "Verify integrity of game files", restores the original executable** — silently undoing the install. Just run the donor setup again if that happens
-- **Nothing else in your Steam setup is modified**: no manifests, no Steam configs, no other games. Restoring the backed-up executable (see below) fully reverts the donor
+Steam only extends Remote Play Together to games it launches itself. Coop Launcher lets you pick a rarely-used **donor game** from your library (e.g. RetroArch) — any game that supports Remote Play Together — and simply remembers that choice. No game files are modified and nothing is installed anywhere: the donor is kept aside so games you launch from Coop Launcher can ride on its Remote Play Together support.
 
 ## Features
 
 - **Automatic Steam discovery** — scans your whole Steam library (all library folders, `appmanifest_*.acf` parsing), on both flat and directory cache layouts
 - **Banners in your terminal** — artwork rendered through a fallback chain: `chafa` (if installed) → kitty / sixel / iTerm2 native image protocols → 24-bit Unicode half-blocks → letter placeholder. No dependencies required
-- **Remote Play Together magic** — installs itself as the executable of a "donor" game of your choice, backing up the original (see [How it works](#how-it-works))
+- **Donor game** — pick any Remote Play Together game as the launch host; Coop Launcher keeps track of it without touching game files (see [How it works](#how-it-works))
 - **Manual executable overrides** — point any game at a custom binary or launch script (`e`)
 - **Self-contained** — a single ~6 MB binary with no runtime dependencies (uses only `curl`, `stty` and friends, present on every macOS/Linux system)
 
@@ -68,7 +62,7 @@ Run without arguments for the interactive TUI:
 | `esc` | clear filter / cancel |
 | `+` / `-` | banner size |
 | `e` | change executable for selected game |
-| `d` | donor game setup (the Remote Play Together trick) |
+| `d` | donor game setup (pick a Remote Play Together host) |
 | `r` | rescan Steam library |
 | `?` | help & credits |
 | `q` / `ctrl-c` | quit |
@@ -85,24 +79,16 @@ cooplauncher --help
 Game output is captured to a per-game log:
 `~/Library/Logs/CoopLauncher/<appid>.log` on macOS, `~/.cache/cooplauncher/logs/` on Linux.
 
-### The donor trick
+### The donor game
 
 1. Run the launcher and press `d`
-2. Pick a game you're willing to use as a host (RetroArch is a common choice)
-3. Press `y` to confirm — the launcher replaces that game's executable with itself, then shows a success screen and exits
+2. Pick a game to use as the host (RetroArch is a common choice) and press `enter`
+3. Press `esc` to go back — the choice is saved to the launcher's config, nothing else changes
 
 The donor list only offers games that support Remote Play Together, resolved
 from the Steam store and cached locally (`~/.cache/cooplauncher/rpt_cache.json`,
 macOS: `~/Library/Caches/CoopLauncher/`) to stay within API rate limits.
-
-To undo, restore the backup kept next to the installed copy:
-
-```bash
-mv <game-folder>/<name>.bak <game-folder>/<name>
-chmod +x <game-folder>/<name>
-```
-
-The `.bak` is only written the first time you install into a game, so it always holds the pristine original.
+Press `u` in the donor screen to clear the donor.
 
 ### Environment variables
 

@@ -4,12 +4,22 @@ import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path, Paths}
 import upickle.default.*
 
+/** A Remote Play Together-capable game picked as the launch host. Purely
+  * bookkeeping: Coop Launcher never modifies the game's files.
+  */
+final case class DonorGame(
+    appId: String,
+    name: String,
+    exePath: Option[String] = None
+)
+
 final case class LauncherConfig(
-    donorExePath: Option[String] = None,
+    donor: Option[DonorGame] = None,
     executableOverrides: Map[String, String] = Map.empty
 )
 
 object LauncherConfig:
+  implicit val donorRw: ReadWriter[DonorGame] = macroRW
   implicit val rw: ReadWriter[LauncherConfig] = macroRW
 
   def configDir: Path =

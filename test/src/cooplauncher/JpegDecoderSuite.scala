@@ -63,7 +63,7 @@ class LauncherConfigSuite extends munit.FunSuite:
     val dir = Files.createTempDirectory("coopcfg")
     val path: Path = dir.resolve("launcher_config.json")
     val cfg = LauncherConfig(
-      donorExePath = Some("/games/retroarch/retroarch"),
+      donor = Some(DonorGame("1118310", "RetroArch", Some("/games/r/retroarch"))),
       executableOverrides = Map("570" -> "/games/x/stellaris")
     )
     LauncherConfig.save(cfg, path)
@@ -74,4 +74,14 @@ class LauncherConfigSuite extends munit.FunSuite:
   test("missing file yields defaults") {
     val dir = Files.createTempDirectory("coopcfg2")
     assertEquals(LauncherConfig.load(dir.resolve("none.json")), LauncherConfig())
+  }
+
+  test("legacy config with donorExePath loads without a donor") {
+    val dir = Files.createTempDirectory("coopcfg3")
+    val path = dir.resolve("launcher_config.json")
+    Files.write(
+      path,
+      """{"donorExePath": "/games/retroarch/retroarch", "executableOverrides": {"570": "/games/x/s"}}""".getBytes)
+    val back = LauncherConfig.load(path)
+    assertEquals(back, LauncherConfig(executableOverrides = Map("570" -> "/games/x/s")))
   }

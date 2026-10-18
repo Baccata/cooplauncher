@@ -29,7 +29,6 @@ object Tui:
   private case object DonorMode extends Mode
   private case object HelpMode extends Mode
   private case class InputMode(label: String, game: Option[SteamGame], buf: String) extends Mode
-  private case class ConfirmMode(label: String, onYes: () => Unit) extends Mode
 
   private sealed trait Key
   private object Up extends Key
@@ -198,11 +197,9 @@ object Tui:
             "  r               rescan Steam library",
             "  q / ctrl-c      quit",
             "",
-            "  The donor trick: Coop Launcher copies itself over the",
-            "  executable of a donor game (e.g. RetroArch). Steam then",
-            "  grants that game's Remote Play Together support to",
-            "  anything launched from here. The original binary is",
-            "  kept as <name>.bak.",
+            "  The donor game: a Remote Play Together game you pick",
+            "  (e.g. RetroArch) as the launch host. Coop Launcher only",
+            "  keeps track of it — no game files are modified.",
             "",
             "  The donor list only offers games that support Remote Play",
             "  Together (queried from the Steam store and cached locally).",
@@ -218,21 +215,14 @@ object Tui:
           lines += ""
           lines += Dim + "  enter to confirm · esc to cancel" + Reset
 
-        case m: ConfirmMode =>
-          lines += ""
-          lines += Bold + "  " + m.label + Reset
-          lines += ""
-          lines += "  " + Accent + "y" + Reset + " confirm   " + Dim + "any other key cancel" + Reset
-
         case DonorMode =>
           lines += Bold + "  Donor Game Setup" + Reset
-          val cur = config.donorExePath match
-            case Some(p) if new File(p).isFile =>
-              DimPurple + "  current: " + new File(p).getName + Reset
-            case _ =>
+          val cur = config.donor match
+            case Some(d) => DimPurple + "  current: " + d.name + Reset
+            case None =>
               PathFg + "  no donor configured — select a game and press enter" + Reset
           lines += cur
-          lines += Dim + "  enter: install launcher here · esc: back" + Reset
+          lines += Dim + "  enter: set as donor · u: clear · esc: back" + Reset
           lines += Accent + "  ─" * math.max(cols / 2 - 2, 4) + Reset
           val pending = RemotePlay.pendingCount
           val checking =
@@ -266,11 +256,9 @@ object Tui:
         case MainMode =>
           lines += Bold + SelFg + "  Coop Launcher" + Reset +
             Dim + s"   ${visible.length} games" + Reset
-          val donorLine = config.donorExePath match
-            case Some(p) if new File(p).isFile =>
-              DimPurple + "  donor: " + fit(new File(p).getName + " — " + p, cols - 10) + Reset
-            case _ =>
-              PathFg + "  no donor configured — press d to set up" + Reset
+          val donorLine = config.donor match
+            case Some(d) => DimPurple + "  donor: " + fit(d.name, cols - 10) + Reset
+            case None => PathFg + "  no donor configured — press d to set up" + Reset
           lines += donorLine
           if searching then
             lines += "  " + Accent + "/" + Reset + query + "▏"
@@ -399,16 +387,14 @@ object Tui:
       else status = "⚠ path does not exist"
       LauncherConfig.save(config)
 
-    def installDonor(g: SteamGame): Unit =
-      DonorOps.install(g, config) match
-        case Right(_) =>
-          config = LauncherConfig.load()
-          applyFilter()
-          mode = MainMode
-          status =
-            s"✅ Installed into ${g.name} — launch it from your Steam library to start Coop Launcher"
-        case Left(err) =>
-          status = "⚠ " + err
+    /** Records the donor game — no files are touched, the choice is only kept
+      * in the config for when games are launched from the TUI.
+      */
+    def setDonor(g: SteamGame): Unit =
+      config = config.copy(donor =
+        Some(DonorGame(g.appId, g.name, DonorOps.launchablePath(g, config))))
+      LauncherConfig.save(config)
+      applyFilter()
 
     def adjustBanner(d: Int): Unit =
       val (_, c) = term.size
@@ -469,23 +455,18 @@ object Tui:
             case EscKey => mode = MainMode
             case _ => ()
 
-        case m: ConfirmMode =>
-          k match
-            case Char('y') | Char('Y') =>
-              mode = MainMode
-              m.onYes()
-            case _ => mode = MainMode
-
         case DonorMode =>
           k match
             case Up => move(-1)
             case Char('k') => move(-1)
             case Down => move(1)
             case Char('j') => move(1)
-            case Enter =>
-              donorVisible.lift(donorSel).foreach { g =>
-                mode = ConfirmMode(s"Install launcher into \"${g.name}\"? (y/n)", () => installDonor(g))
-              }
+            case Enter => donorVisible.lift(donorSel).foreach(setDonor)
+            case Char('u') =>
+              if config.donor.isDefined then
+                config = config.copy(donor = None)
+                LauncherConfig.save(config)
+                applyFilter()
             case EscKey => mode = MainMode
             case CtrlC => running = false
             case _ => ()

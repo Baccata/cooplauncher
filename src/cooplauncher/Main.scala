@@ -49,7 +49,7 @@ private def listGames(): Unit =
   if games.isEmpty then
     println("No Steam games found. Is Steam installed? (STEAM_ROOT can override)")
   else
-    val donor = config.donorExePath.getOrElse("-")
+    val donor = config.donor.map(_.name).getOrElse("-")
     println(s"Steam root : ${SteamDiscovery.steamPath().map(_.getAbsolutePath).getOrElse("not found")}")
     println(s"Donor      : $donor")
     println(s"${games.length} games:")
