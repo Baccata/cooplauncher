@@ -63,6 +63,28 @@ object GameRunner:
         Right(())
       catch case e: Exception => Left(if e.getMessage != null then e.getMessage else e.toString)
 
+  /** Wrap mode: the caller IS the donor's launch-option process, so the game
+    * must run as its child — Steam then attributes the whole tree to the
+    * donor and grants it Remote Play Together. Blocks until the game exits.
+    */
+  def launchAndWait(exe: String, appId: String): Either[String, Unit] =
+    val bin = new File(exe)
+    if !bin.isFile then Left(s"executable not found: $exe")
+    else if !bin.canExecute then Left(s"not executable: $exe")
+    else
+      val logFile = new File(logDir, s"$appId.log")
+      try
+        val code = Process(Seq(exe), bin.getParentFile).run(
+          new ProcessIO(
+            in => try in.close() catch case _: Exception => (),
+            is => drainTo(is, logFile),
+            is => drainTo(is, logFile)
+          )
+        ).exitValue()
+        if code == 0 then Right(())
+        else Left(s"$exe exited with code $code")
+      catch case e: Exception => Left(if e.getMessage != null then e.getMessage else e.toString)
+
   private def drainTo(is: InputStream, log: File): Unit =
     var out: FileOutputStream = null
     try out = new FileOutputStream(log, true)

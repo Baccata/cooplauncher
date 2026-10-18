@@ -150,9 +150,21 @@ object Tui:
       if reExecInTerminal() then return
       System.err.println("No terminal available. Use --list / --launch <appid> for headless mode.")
       return
-    runInteractive()
+    runInteractive(wrap = false)
 
-  private def runInteractive(): Unit =
+  /** Launched as a donor game's Steam launch option (`--wrap %command%`):
+    * Steam spawned us inside the donor's process tree, so games started from
+    * here inherit its Remote Play Together support. The args after --wrap are
+    * the donor's own command — deliberately not executed.
+    */
+  def runWrap(): Unit =
+    if !hasTty then
+      if reExecInTerminal() then return
+      System.err.println("No terminal available.")
+      return
+    runInteractive(wrap = true)
+
+  private def runInteractive(wrap: Boolean): Unit =
     val term = new Term
     var config = LauncherConfig.load()
     var all: List[SteamGame] = Nil
@@ -198,8 +210,11 @@ object Tui:
             "  q / ctrl-c      quit",
             "",
             "  The donor game: a Remote Play Together game you pick",
-            "  (e.g. RetroArch) as the launch host. Coop Launcher only",
-            "  keeps track of it — no game files are modified.",
+            "  (e.g. RetroArch) as the launch host. Set its Steam launch",
+            "  options to the --wrap line shown on the donor screen, then",
+            "  launch the donor from Steam: games picked here run inside",
+            "  the donor's process tree and gain its Remote Play Together",
+            "  support. No game files are modified.",
             "",
             "  The donor list only offers games that support Remote Play",
             "  Together (queried from the Steam store and cached locally).",
@@ -223,6 +238,14 @@ object Tui:
               PathFg + "  no donor configured — select a game and press enter" + Reset
           lines += cur
           lines += Dim + "  enter: set as donor · u: clear · esc: back" + Reset
+          val wrapHint = (config.donor, SelfPath.get()) match
+            case (Some(d), Some(self)) => List(
+              Dim + s"""  so it grants Remote Play Together, set "${d.name}"'s Steam
+              |  launch options (Properties → General) to:""".stripMargin + Reset,
+              Accent + "  " + fit(s"$self --wrap %command%", cols) + Reset
+            )
+            case _ => Nil
+          wrapHint.foreach(lines += _)
           lines += Accent + "  ─" * math.max(cols / 2 - 2, 4) + Reset
           val pending = RemotePlay.pendingCount
           val checking =
@@ -235,7 +258,7 @@ object Tui:
             lines += "  browse the Steam store — games that do, cheapest first:"
             lines += Accent +
               link("https://store.steampowered.com/search/?category2=44&sort_by=Price_ASC") + Reset
-          val maxRows = math.max(rows - 7 - checking.size, 1)
+          val maxRows = math.max(rows - 7 - checking.size - wrapHint.size, 1)
           val from = math.max(math.min(donorSel - maxRows / 2, donorVisible.length - maxRows), 0)
           donorVisible.zipWithIndex
             .slice(from, from + maxRows)
@@ -368,12 +391,23 @@ object Tui:
     def launch(g: SteamGame): Unit =
       DonorOps.launchablePath(g, config) match
         case Some(exe) =>
-          GameRunner.launch(exe, g.appId) match
-            case Right(()) => status = s"Launching ${g.name}… (output → ${new File(GameRunner.logDir, g.appId + ".log").getAbsolutePath})"
-            case Left(err) => status = "⚠ " + err
+          if wrap then
+            status = s"Launching ${g.name} as the donor session…"
+            redraw()
+            GameRunner.launchAndWait(exe, g.appId) match
+              case Right(()) => running = false
+              case Left(err) => status = "⚠ " + err
+          else
+            GameRunner.launch(exe, g.appId) match
+              case Right(()) => status = s"Launching ${g.name}… (output → ${new File(GameRunner.logDir, g.appId + ".log").getAbsolutePath})"
+              case Left(err) => status = "⚠ " + err
         case None =>
           GameRunner.launchViaSteam(g.appId) match
-            case Right(()) => status = s"Launching ${g.name} through Steam…"
+            case Right(()) =>
+              status =
+                if wrap then
+                  s"${g.name} launched through Steam — outside the donor tree; keep this open while playing"
+                else s"Launching ${g.name} through Steam…"
             case Left(err) =>
               status = "⚠ " + err
               mode = InputMode(s"Executable path for ${g.name}:", Some(g), "")
@@ -534,6 +568,14 @@ object Tui:
 
     try
       refreshGames()
+      if wrap && config.donor.isEmpty then
+        // Steam sets SteamAppId for the game it is launching — us, the donor.
+        sys.env.get("SteamAppId").orElse(sys.env.get("STEAM_APPID")).foreach { id =>
+          val name = all.find(_.appId == id).map(_.name).getOrElse(id)
+          config = config.copy(donor = Some(DonorGame(id, name, None)))
+          LauncherConfig.save(config)
+          applyFilter()
+        }
       while running do
         readKey().foreach { k =>
           handleKey(k)

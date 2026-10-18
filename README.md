@@ -6,7 +6,7 @@ This is the Scala Native port of the original [Coop Launcher](https://github.com
 
 ## How it works
 
-Steam only extends Remote Play Together to games it launches itself. Coop Launcher lets you pick a rarely-used **donor game** from your library (e.g. RetroArch) — any game that supports Remote Play Together — and simply remembers that choice. No game files are modified and nothing is installed anywhere: the donor is kept aside so games you launch from Coop Launcher can ride on its Remote Play Together support.
+Steam only extends Remote Play Together to games it launches itself. Coop Launcher lets you pick a rarely-used **donor game** from your library (e.g. RetroArch) — any game that supports Remote Play Together — and then launch itself *as* the donor through a one-line Steam launch option (`--wrap %command%`). No game files are modified and nothing is installed anywhere; games you start from Coop Launcher run inside the donor's process tree and inherit its Remote Play Together support.
 
 ## Features
 
@@ -85,12 +85,31 @@ Games launched through Steam log to Steam itself.
 
 1. Run the launcher and press `d`
 2. Pick a game to use as the host (RetroArch is a common choice) and press `enter`
-3. Press `esc` to go back — the choice is saved to the launcher's config, nothing else changes
+3. The donor screen shows a launch-options line — open that game's Steam
+   properties (General → Launch Options) and paste it:
 
-The donor list only offers games that support Remote Play Together, resolved
-from the Steam store and cached locally (`~/.cache/cooplauncher/rpt_cache.json`,
-macOS: `~/Library/Caches/CoopLauncher/`) to stay within API rate limits.
-Press `u` in the donor screen to clear the donor.
+   ```
+   /path/to/cooplauncher --wrap %command%
+   ```
+
+4. Launch the **donor** from your Steam library. Steam runs Coop Launcher as
+   part of the donor's launch, so Remote Play Together becomes available.
+   Pick the game you actually want to play — it starts inside the donor's
+   process tree, so friends can join even if the game has no Remote Play
+   Together support of its own.
+
+Nothing is ever written into game files: the trick lives entirely in the
+launch option, and removing it fully reverts the setup.
+
+Notes:
+
+- The donor list only offers games that support Remote Play Together,
+  resolved from the Steam store and cached locally
+  (`~/.cache/cooplauncher/rpt_cache.json`, macOS: `~/Library/Caches/CoopLauncher/`)
+  to stay within API rate limits. Press `u` in the donor screen to clear the donor.
+- Native games run as direct children of the wrapper. Windows-only (Proton)
+  games are started through Steam and are not attributed to the donor — the
+  donor session stays open while they run.
 
 ### Environment variables
 

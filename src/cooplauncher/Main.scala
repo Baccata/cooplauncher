@@ -14,6 +14,8 @@ import scala.sys.process.Process
       showBanner(appId)
     case "--launch" :: target :: _ =>
       launchBy(target)
+    case "--wrap" :: _ =>
+      Tui.runWrap()
     case other =>
       System.err.println(s"Unknown arguments: ${other.mkString(" ")}")
       printHelp()
@@ -24,6 +26,9 @@ private def printHelp(): Unit =
       |
       |Usage:
       |  cooplauncher                interactive TUI (default)
+      |  cooplauncher --wrap [cmd]   run as a donor game's Steam launch option:
+      |                              the TUI launches games inside the donor's
+      |                              process tree so Remote Play Together applies
       |  cooplauncher --list         list discovered Steam games
       |  cooplauncher --launch <id>  launch a game by appId or (partial) name
       |  cooplauncher --help         this help
