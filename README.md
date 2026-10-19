@@ -13,7 +13,7 @@ Steam only extends Remote Play Together to games it launches itself. Coop Launch
 - **Automatic Steam discovery** — scans your whole Steam library (all library folders, `appmanifest_*.acf` parsing), on both flat and directory cache layouts
 - **Banners in your terminal** — artwork rendered through a fallback chain: `chafa` (if installed) → kitty / sixel / iTerm2 native image protocols → 24-bit Unicode half-blocks → letter placeholder. No dependencies required
 - **Donor game** — pick any Remote Play Together game as the launch host; Coop Launcher keeps track of it without touching game files (see [How it works](#how-it-works))
-- **Proton-aware** — games without a native executable (Windows titles) are launched through Steam itself, so Proton, compat data and launch options keep working
+- **Proton-aware** — games without a native executable (Windows titles) run through Proton directly as the wrapper's child, so they get the donor's Remote Play Together support too
 - **Manual executable overrides** — point any game at a custom binary or launch script (`e`)
 - **Self-contained** — a single ~6 MB binary with no runtime dependencies (uses only `curl`, `stty` and friends, present on every macOS/Linux system)
 
@@ -112,9 +112,48 @@ Notes:
   resolved from the Steam store and cached locally
   (`~/.cache/cooplauncher/rpt_cache.json`, macOS: `~/Library/Caches/CoopLauncher/`)
   to stay within API rate limits. Press `u` in the donor screen to clear the donor.
-- Native games run as direct children of the wrapper. Windows-only (Proton)
-  games are started through Steam and are not attributed to the donor — the
-  donor session stays open while they run.
+- Native games run as direct children of the wrapper. Windows-only games run
+  through Proton directly (`proton waitforexitandrun`) as children of the
+  wrapper too, so they gain the donor's Remote Play Together support just
+  like native ones. Only when that isn't possible does Coop Launcher fall
+  back to handing the game to Steam, which runs it outside the donor tree
+  (no Remote Play Together for that session).
+
+### Limitations and edge cases
+
+The tool's one goal is to make Remote Play Together work for Steam games
+that don't support it. The donor trick needs the *game* to run as a child
+of the donor, and a few situations break that attribution. They are handled
+with a clear message, not silently:
+
+- **Windows (Proton) games.** Steam normally assembles the Proton
+  environment itself; Coop Launcher reconstructs the essential parts:
+  - the game's compat tool is read from its per-game Proton settings
+    (`CompatToolMapping` in `localconfig.vdf`); with no per-game setting it
+    falls back to Proton - Experimental, then to the newest installed build
+    in the Steam library. Custom tools (e.g. GE-Proton) are only resolved
+    when the mapping name matches a folder under `steamapps/compattools.d`
+    or `steamapps/common`.
+  - the wine prefix must exist: run the game through Steam once before
+    using it with a donor (`steamapps/compatdata/<appid>`), otherwise
+    launching is refused with a hint.
+  - the wrapper launches `proton waitforexitandrun <game>.exe` directly,
+    **without** Steam Linux Runtime's pressure-vessel container. Most games
+    run fine; a game that needs container-provided libraries may fail to
+    start under the wrapper — it will still start when launched by Steam
+    directly (outside the donor tree).
+  - the main `.exe` is picked by name similarity to the game's name among
+    the game folder's top-level PE files, skipping installers and crash
+    handlers. A game whose real executable is named unlike the game (e.g.
+    always through a generic `Launcher.exe`) may pick the wrong file; or
+    find nothing, in which case the launch falls back to Steam.
+- **Native-executable overrides** (`e` in the TUI) are meant for native
+  ELF binaries; pointing one at a Windows `.exe` cannot work, since the
+  game must be exec'd directly as a child.
+- **Steam launch options.** Launching through the donor requires the
+  donor's Steam launch options to contain the `--wrap` wrapper line; the
+  launch is refused with guidance otherwise. Steam writes those options to
+  `localconfig.vdf` when you set them in-game via the donor screen (`w`).
 
 ### Environment variables
 

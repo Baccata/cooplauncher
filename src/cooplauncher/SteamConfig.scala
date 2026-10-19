@@ -40,6 +40,18 @@ object SteamConfig:
   def isWrapped(steamRoot: File, appId: String): Boolean =
     getLaunchOptions(steamRoot, appId).exists(_.contains("--wrap"))
 
+  /** The compat tool Steam would use for the game, from its per-game
+    * Proton settings (empty/absent when the game follows the default).
+    */
+  def compatToolName(steamRoot: File, appId: String): Option[String] =
+    localConfigPaths(steamRoot).iterator
+      .flatMap { p =>
+        Vdf.parseDocument(read(p)).flatMap(
+          _.at(List("Software", "Valve", "Steam", "CompatToolMapping", appId, "name"))).iterator
+      }
+      .collect { case VdfNode.Str(s) => s }
+      .nextOption()
+
   /** Writes the launch options into every account's localconfig.vdf, backing
     * each file up first. Returns the files that were changed.
     */

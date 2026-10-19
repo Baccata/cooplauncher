@@ -181,7 +181,12 @@ object Tui:
               case Right(()) => ()
               case Left(err) => System.err.println(err)
           case None =>
-            GameRunner.launchViaSteam(g.appId) match
+            val protonRun = SteamDiscovery.steamPath() match
+              case Some(root) => Proton.launchAndWait(root, g)
+              case None => Left("Steam installation not found")
+            protonRun.orElse {
+              GameRunner.launchViaSteam(g.appId)
+            } match
               case Right(()) => ()
               case Left(err) => System.err.println(err)
 
@@ -347,7 +352,7 @@ object Tui:
                 lines += DimPurple + s"  [ $letter ]" + Reset
                 lines += Dim + "  " + fit(g.name, cols - 4) + Reset
             val exe = DonorOps.launchablePath(g, config)
-              .getOrElse("launched through Steam (no native executable)")
+              .getOrElse("Windows game — runs via Proton inside the donor session")
             lines += PathFg + "  " + fit(exe, cols - 4) + Reset
             lines += Dim + "  " + ("─" * math.max(cols - 4, 4)) + Reset
 
@@ -419,7 +424,10 @@ object Tui:
     def launch(g: SteamGame): Unit =
       if wrap then launchInSession(g) else launchViaDonor(g)
 
-    /** Wrap session: the game must start inside the donor's process tree. */
+    /** Wrap session: the game must start inside the donor's process tree.
+      * Windows games run through Proton as our child — Steam hands them off
+      * only as a last resort, since that loses the donor attribution.
+      */
     def launchInSession(g: SteamGame): Unit =
       DonorOps.launchablePath(g, config) match
         case Some(exe) =>
@@ -429,12 +437,18 @@ object Tui:
             case Right(()) => running = false
             case Left(err) => status = "⚠ " + err
         case None =>
-          GameRunner.launchViaSteam(g.appId) match
-            case Right(()) =>
-              status = s"${g.name} launched through Steam — outside the donor tree; keep this open while playing"
+          val protonRun = SteamDiscovery.steamPath() match
+            case Some(root) => Proton.launchAndWait(root, g)
+            case None => Left("Steam installation not found")
+          protonRun match
+            case Right(()) => running = false
             case Left(err) =>
-              status = "⚠ " + err
-              mode = InputMode(s"Executable path for ${g.name}:", Some(g), "")
+              GameRunner.launchViaSteam(g.appId) match
+                case Right(()) =>
+                  status = s"${g.name} launched through Steam — outside the donor tree (${err})"
+                case Left(err2) =>
+                  status = "⚠ " + err
+                  mode = InputMode(s"Executable path for ${g.name}:", Some(g), "")
 
     /** Plain TUI: launching always goes through the donor, and only with one. */
     def launchViaDonor(g: SteamGame): Unit =
