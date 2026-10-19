@@ -136,9 +136,10 @@ object LauncherConfig:
     * typically wrapped by scala-cli in development). A packaged native
     * binary launched with any arguments also has a multi-token argv, but
     * is referenced directly as a single executable — as are its own
-    * arguments, which need no reproduction machinery.
+    * arguments, which need no reproduction machinery. Public so tests can
+    * branch on the same detection the option writer uses.
     */
-  private def isJvmInvocation(ts: Vector[String]): Boolean =
+  def isJvmInvocation(ts: Vector[String]): Boolean =
     ts.headOption.exists(t =>
       t.endsWith("/java") || t.endsWith("\\java") || t == "java")
 
