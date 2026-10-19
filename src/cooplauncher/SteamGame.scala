@@ -46,22 +46,20 @@ object GameRunner:
 
   def steamAvailable: Boolean = steamLaunchArgs("0").isDefined
 
-  def launch(exe: String, appId: String): Either[String, Unit] =
-    val bin = new File(exe)
-    if !bin.isFile then Left(s"executable not found: $exe")
-    else if !bin.canExecute then Left(s"not executable: $exe")
-    else
-      val logFile = new File(logDir, s"$appId.log")
-      try
-        Process(Seq(exe), bin.getParentFile).run(
-          new ProcessIO(
-            in => try in.close() catch case _: Exception => (),
-            is => drainTo(is, logFile),
-            is => drainTo(is, logFile)
-          )
-        )
-        Right(())
-      catch case e: Exception => Left(if e.getMessage != null then e.getMessage else e.toString)
+  /** Plain-mode launch: records the user's pick, then has Steam start the
+    * donor, whose --wrap launch option hands control back to Coop Launcher
+    * inside the donor's process tree.
+    */
+  def requestViaDonor(donor: DonorGame, game: SteamGame): Either[String, String] =
+    LauncherConfig.writePendingLaunch(game.appId) match
+      case Left(err) => Left(err)
+      case Right(_) =>
+        launchViaSteam(donor.appId) match
+          case Right(()) =>
+            Right(s"Starting ${donor.name} — ${game.name} will launch inside it")
+          case Left(err) =>
+            LauncherConfig.clearPendingLaunch()
+            Left(err)
 
   /** Wrap mode: the caller IS the donor's launch-option process, so the game
     * must run as its child — Steam then attributes the whole tree to the

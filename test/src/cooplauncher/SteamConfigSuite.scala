@@ -69,3 +69,19 @@ class SteamConfigSuite extends FunSuite:
     assertEquals(SteamConfig.transform("\"Root\"\n{\n}", "1", "x"),
       Left("unrecognized localconfig.vdf: no Software/Valve/Steam/apps section"))
   }
+
+  test("getLaunchOptions and isWrapped read the account config") {
+    import java.nio.file.Files
+    val root = Files.createTempDirectory("coopsteam").toFile
+    val cfg = root.toPath.resolve("userdata/999/config/localconfig.vdf")
+    Files.createDirectories(cfg.getParent)
+    Files.write(cfg,
+      SteamConfig.transform(sample(appBlock("1118310")), "1118310", "/opt/coop --wrap %command%").toOption.get
+        .getBytes)
+
+    assertEquals(SteamConfig.getLaunchOptions(root, "1118310"),
+      Some("/opt/coop --wrap %command%"))
+    assert(SteamConfig.isWrapped(root, "1118310"))
+    assertEquals(SteamConfig.getLaunchOptions(root, "620"), None)
+    assert(!SteamConfig.isWrapped(root, "620"))
+  }

@@ -85,3 +85,18 @@ class LauncherConfigSuite extends munit.FunSuite:
     val back = LauncherConfig.load(path)
     assertEquals(back, LauncherConfig(executableOverrides = Map("570" -> "/games/x/s")))
   }
+
+  test("pending launch round-trips and is consumed") {
+    val path = Files.createTempDirectory("coopcfg4").resolve("pending_launch.json")
+    assertEquals(LauncherConfig.consumePendingLaunch(path), None)
+    assertEquals(LauncherConfig.writePendingLaunch("632360", path), Right(()))
+    assertEquals(LauncherConfig.consumePendingLaunch(path), Some("632360"))
+    assertEquals(LauncherConfig.consumePendingLaunch(path), None)
+  }
+
+  test("stale pending launches are discarded") {
+    val path = Files.createTempDirectory("coopcfg5").resolve("pending_launch.json")
+    Files.write(path, """{"appId": "632360", "at": 1000}""".getBytes)
+    assertEquals(LauncherConfig.consumePendingLaunch(path), None)
+    assert(!Files.exists(path))
+  }

@@ -58,7 +58,7 @@ Run without arguments for the interactive TUI:
 | Key | Action |
 | --- | --- |
 | `↑` `↓` / `j` `k` | move selection |
-| `enter` / `o` | launch selected game |
+| `enter` / `o` | launch selected game (through the donor) |
 | `/` | search — type to filter, `enter` accepts, `esc` clears |
 | `esc` | clear filter / cancel |
 | `+` / `-` | banner size |
@@ -72,7 +72,7 @@ Headless mode is also available:
 
 ```bash
 cooplauncher --list            # list discovered games
-cooplauncher --launch 646570   # launch by appId or (partial) name
+cooplauncher --launch 646570   # launch by appId or (partial) name, through the donor
 cooplauncher --banner 646570   # print a game banner (handy for picking COOP_IMG)
 cooplauncher --help
 ```
@@ -97,6 +97,11 @@ Games launched through Steam log to Steam itself.
    Pick the game you actually want to play — it starts inside the donor's
    process tree, so friends can join even if the game has no Remote Play
    Together support of its own.
+
+Launching is always donor-routed: pressing `enter` on a game in the main
+screen asks Steam to start the donor and hands over your pick, so a donor
+must be configured first. You can also skip the main screen entirely and
+launch the donor straight from Steam, then pick a game in its session.
 
 Nothing is ever written into game files: the trick lives entirely in the
 launch option, and removing it fully reverts the setup.

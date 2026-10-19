@@ -26,11 +26,11 @@ private def printHelp(): Unit =
       |
       |Usage:
       |  cooplauncher                interactive TUI (default)
+      |  cooplauncher --launch <id>  launch a game through the donor
       |  cooplauncher --wrap [cmd]   run as a donor game's Steam launch option:
       |                              the TUI launches games inside the donor's
       |                              process tree so Remote Play Together applies
       |  cooplauncher --list         list discovered Steam games
-      |  cooplauncher --launch <id>  launch a game by appId or (partial) name
       |  cooplauncher --help         this help
       |
       |Environment:
@@ -75,18 +75,13 @@ private def launchBy(target: String): Unit =
     case Nil =>
       System.err.println(s"No game matching '$target'.")
     case game :: Nil =>
-      DonorOps.launchablePath(game, config) match
-        case Some(exe) =>
-          GameRunner.launch(exe, game.appId) match
-            case Right(()) =>
-              println(
-                s"Launching ${game.name}: $exe\n  output → ${new File(GameRunner.logDir, game.appId + ".log").getAbsolutePath}")
-            case Left(err) =>
-              System.err.println(s"Failed to launch ${game.name}: $err")
+      config.donor match
         case None =>
-          GameRunner.launchViaSteam(game.appId) match
-            case Right(()) => println(s"Launching ${game.name} through Steam")
-            case Left(err) => System.err.println(s"Cannot launch ${game.name}: $err")
+          System.err.println("No donor configured — run cooplauncher and press d to pick one.")
+        case Some(d) =>
+          GameRunner.requestViaDonor(d, game) match
+            case Right(msg) => println(msg)
+            case Left(err) => System.err.println("⚠ " + err)
     case several =>
       System.err.println(s"Ambiguous match for '$target':")
       several.foreach(g => System.err.println(s"  ${g.appId}  ${g.name}"))

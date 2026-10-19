@@ -26,6 +26,20 @@ object SteamConfig:
     try Process(Seq("pgrep", "-x", "steam")).! == 0
     catch case _: Exception => false
 
+  /** The game's LaunchOptions from the first account config that has an entry. */
+  def getLaunchOptions(steamRoot: File, appId: String): Option[String] =
+    localConfigPaths(steamRoot).iterator
+      .flatMap { p =>
+        Vdf.parseDocument(read(p)).flatMap(
+          _.at(List("Software", "Valve", "Steam", "apps", appId, "LaunchOptions"))).iterator
+      }
+      .collect { case VdfNode.Str(s) => s }
+      .nextOption()
+
+  /** True when the game's launch options route through our --wrap wrapper. */
+  def isWrapped(steamRoot: File, appId: String): Boolean =
+    getLaunchOptions(steamRoot, appId).exists(_.contains("--wrap"))
+
   /** Writes the launch options into every account's localconfig.vdf, backing
     * each file up first. Returns the files that were changed.
     */
