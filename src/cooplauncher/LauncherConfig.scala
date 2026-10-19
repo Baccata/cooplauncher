@@ -85,17 +85,38 @@ object LauncherConfig:
     */
   def refreshDevWrapper(dir: Path = configDir): Option[Path] =
     SelfPath.tokens() match
-      case Some(ts) if ts.length > 1 =>
+      case Some(ts) if isJvmInvocation(ts) =>
         try
           val path = dir.resolve("dev-wrapper.sh")
           Files.createDirectories(dir)
-          Files.write(path,
-            ("#!/bin/sh\nexec " + ts.map(SelfPath.quote).mkString(" ") + " \"$@\"\n")
-              .getBytes(StandardCharsets.UTF_8))
+          Files.write(path, wrapperScript(ts).getBytes(StandardCharsets.UTF_8))
           path.toFile.setExecutable(true)
           Some(path)
         catch case _: Exception => None
       case _ => None
+
+  /** The shell script that replays a JVM argv. scala-cli's ".app" launcher
+    * embeds its classpath and a coursier bootstrap: java receiving the
+    * recorded argv verbatim reads the trailing .app path as a main class
+    * and dies (ClassNotFoundException), so those runs are replayed by
+    * executing the .app file directly, with the JDK it was launched from
+    * put on PATH. Any other JVM invocation replays its argv as-is.
+    */
+  def wrapperScript(ts: Vector[String]): String =
+    val appIdx = ts.lastIndexWhere(t => t.endsWith(".app"))
+    if appIdx > 0 && Files.isRegularFile(Path.of(ts(appIdx))) then
+      val javaDir = javaDirOf(ts.head)
+      Seq("#!/bin/sh\n")
+        .appendedAll(javaDir.map(h => s"export JAVA_HOME=${SelfPath.quote(h.getParent.toString)}\n"))
+        .appendedAll(javaDir.map(h => s"export PATH=${SelfPath.quote(h.toString)}:$$PATH\n"))
+        .appended(s"exec ${SelfPath.quote(ts(appIdx))} \"$$@\"\n")
+        .mkString
+    else "#!/bin/sh\nexec " + ts.map(SelfPath.quote).mkString(" ") + " \"$@\"\n"
+
+  private def javaDirOf(first: String): Option[Path] =
+    val p = Path.of(first)
+    if p.getFileName.toString == "java" then Some(p.getParent) else Option.empty
+
 
   /** The Steam launch-option text that reproduces the current process:
     * the freshly rewritten dev wrapper script for JVM invocations, or the
@@ -104,12 +125,22 @@ object LauncherConfig:
     */
   def wrapLaunchOptions(dir: Path = configDir): Option[String] =
     SelfPath.tokens() match
-      case Some(ts) if ts.length > 1 =>
+      case Some(ts) if isJvmInvocation(ts) =>
         refreshDevWrapper(dir).map(p =>
           SelfPath.quote(p.toAbsolutePath.toString) + " --wrap %command%")
       case Some(ts) if ts.nonEmpty =>
         Some(SelfPath.quote(ts.head) + " --wrap %command%")
       case _ => None
+
+  /** A run through a JVM executable (an invocation invoked as `java ...`,
+    * typically wrapped by scala-cli in development). A packaged native
+    * binary launched with any arguments also has a multi-token argv, but
+    * is referenced directly as a single executable — as are its own
+    * arguments, which need no reproduction machinery.
+    */
+  private def isJvmInvocation(ts: Vector[String]): Boolean =
+    ts.headOption.exists(t =>
+      t.endsWith("/java") || t.endsWith("\\java") || t == "java")
 
   def load(path: Path = configPath): LauncherConfig =
     try
