@@ -10,22 +10,18 @@ class SelfPathSuite extends munit.FunSuite:
     assertEquals(SelfPath.quote("/plain"), "'/plain'")
   }
 
-  test("dev JVM runs get a self-reproducing wrapper script as the launch option") {
+  test("launch options reproduce the running command by mode") {
     val dir = Files.createTempDirectory("coopwrap")
     val line = LauncherConfig.wrapLaunchOptions(dir).get
     assert(line.endsWith(" --wrap %command%"), line)
     assert(line.startsWith("'"), s"first token should be quoted: $line")
 
-    // The line must never reproduce the bare executable alone. This is the
-    // regression test for Steam being told to run bare `java` with no jar,
-    // which silently did nothing.
-    val firstToken = line.stripPrefix("'").takeWhile(_ != '\'')
-    assert(firstToken != SelfPath.get().get, s"should not be the bare executable: $line")
-
     val tokens = SelfPath.tokens().get
+    val firstToken = line.stripPrefix("'").takeWhile(_ != '\'')
     if LauncherConfig.isJvmInvocation(tokens) then
-      // JVM invocation: the reproducible command is the freshly written
-      // dev wrapper, not the executable itself.
+      // JVM invocation: the reproducible command is the freshly written dev
+      // wrapper, never a bare `java` — the original bug: Steam ran bare
+      // `java` with no jar, which silently did nothing.
       val script = dir.resolve("dev-wrapper.sh")
       assert(Files.exists(script))
       assert(script.toFile.canExecute, "dev wrapper must be executable")
@@ -33,9 +29,11 @@ class SelfPathSuite extends munit.FunSuite:
       assert(content.startsWith("#!/bin/"), content)
       assert(content.endsWith("\"$@\"\n"), s"wrapper must forward Steam's args: $content")
       assertEquals(firstToken, script.toString)
+      assert(firstToken != tokens.head, "must not reference java alone")
     else
-      // CI test JVMs launched by a native driver (not visible as java):
-      // the single-executable reference is the correct reproduction.
+      // A standalone binary (the packaged launcher, or CI's native test
+      // driver): its own path plus Steam's placeholder is the faithful
+      // reproduction.
       assertEquals(firstToken, tokens.head)
   }
 
