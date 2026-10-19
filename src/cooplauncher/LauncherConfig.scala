@@ -73,6 +73,44 @@ object LauncherConfig:
   def clearPendingLaunch(path: Path = pendingPath): Unit =
     try Files.deleteIfExists(path) catch case _: Exception => ()
 
+  def devWrapperPath: Path = configDir.resolve("dev-wrapper.sh")
+
+  /** Development helper: a JVM process (scala-cli run, java -jar from any
+    * path) is awkward to reproduce inline in a Steam launch option, so write
+    * a small exec script that mirrors the exact current command. The Steam
+    * launch option then points at this stable script path, refreshed on
+    * every donor launch, so no jar location matters. Returns None (no
+    * work needed) for packaged native binaries, which are referenced
+    * directly.
+    */
+  def refreshDevWrapper(dir: Path = configDir): Option[Path] =
+    SelfPath.tokens() match
+      case Some(ts) if ts.length > 1 =>
+        try
+          val path = dir.resolve("dev-wrapper.sh")
+          Files.createDirectories(dir)
+          Files.write(path,
+            ("#!/bin/sh\nexec " + ts.map(SelfPath.quote).mkString(" ") + " \"$@\"\n")
+              .getBytes(StandardCharsets.UTF_8))
+          path.toFile.setExecutable(true)
+          Some(path)
+        catch case _: Exception => None
+      case _ => None
+
+  /** The Steam launch-option text that reproduces the current process:
+    * the freshly rewritten dev wrapper script for JVM invocations, or the
+    * binary path directly, followed by the wrapper flag and Steam's
+    * placeholder for the donor's own command (deliberately not executed).
+    */
+  def wrapLaunchOptions(dir: Path = configDir): Option[String] =
+    SelfPath.tokens() match
+      case Some(ts) if ts.length > 1 =>
+        refreshDevWrapper(dir).map(p =>
+          SelfPath.quote(p.toAbsolutePath.toString) + " --wrap %command%")
+      case Some(ts) if ts.nonEmpty =>
+        Some(SelfPath.quote(ts.head) + " --wrap %command%")
+      case _ => None
+
   def load(path: Path = configPath): LauncherConfig =
     try
       if Files.exists(path) then

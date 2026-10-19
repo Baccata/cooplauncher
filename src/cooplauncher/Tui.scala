@@ -199,6 +199,7 @@ object Tui:
     var donorVisible: List[SteamGame] = Nil
     var donorMsg: String = ""
     var donorSel = 0
+    var closeSteamConfirm = false
     var query = ""
     var searching = false
     var sel = 0
@@ -236,11 +237,11 @@ object Tui:
             "  r               rescan Steam library",
             "  q / ctrl-c      quit",
             "",
-            "  The donor game: a Remote Play Together game you pick",
-            "  (e.g. RetroArch) as the launch host. Set its Steam launch",
-            "  options to the --wrap line shown on the donor screen, then",
-            "  launch the donor from Steam: games picked here run inside",
-            "  the donor's process tree and gain its Remote Play Together",
+            "  The donor game: a Remote Play Together game (e.g. RetroArch)",
+            "  picked as the launch host. Confirming the choice closes",
+            "  Steam, installs the donor's --wrap launch options and",
+            "  restarts Steam, so games launched here run inside the",
+            "  donor's process tree and gain its Remote Play Together",
             "  support. No game files are modified.",
             "",
             "  Launching always goes through the donor: enter starts the",
@@ -267,14 +268,23 @@ object Tui:
             case None =>
               PathFg + "  no donor configured — select a game and press enter" + Reset
           lines += cur
-          lines += Dim + "  enter: set as donor · w: write launch options · u: clear · esc: back" + Reset
+          lines += Dim + "  enter: set as donor · u: clear · esc: back" + Reset
           val msg = if donorMsg.isEmpty then None else Some(PathFg + "  " + donorMsg + Reset)
           msg.foreach(lines += _)
-          val wrapHint = (config.donor, SelfPath.wrapPrefix()) match
-            case (Some(d), Some(prefix)) => List(
+          val confirmPrompt =
+            if !closeSteamConfirm then Nil
+            else List(
+              "",
+              Bold + s"  Install ${config.donor.map(_.name).getOrElse("the donor")}'s Remote Play Together launch options now?" + Reset,
+              Dim + "  This closes Steam, writes the options while it is off, and restarts Steam." + Reset,
+              Accent + "  enter: yes · esc: no" + Reset
+            )
+          confirmPrompt.foreach(lines += _)
+          val wrapHint = (config.donor, LauncherConfig.wrapLaunchOptions()) match
+            case (Some(d), Some(opts)) if !closeSteamConfirm => List(
               Dim + s"""  so it grants Remote Play Together, set "${d.name}"'s Steam
               |  launch options (Properties → General) to:""".stripMargin + Reset,
-              Accent + "  " + fit(s"$prefix --wrap %command%", cols) + Reset
+              Accent + "  " + fit(opts, cols) + Reset
             )
             case _ => Nil
           wrapHint.foreach(lines += _)
@@ -291,7 +301,7 @@ object Tui:
             lines += Accent +
               link("https://store.steampowered.com/search/?category2=44&sort_by=Price_ASC") + Reset
           val maxRows =
-            math.max(rows - 7 - checking.size - wrapHint.size - msg.size, 1)
+            math.max(rows - 7 - checking.size - wrapHint.size - msg.size - confirmPrompt.size, 1)
           val from = math.max(math.min(donorSel - maxRows / 2, donorVisible.length - maxRows), 0)
           donorVisible.zipWithIndex
             .slice(from, from + maxRows)
@@ -490,6 +500,69 @@ object Tui:
       LauncherConfig.save(config)
       applyFilter()
 
+    /** Records the donor game — no files are touched, the choice is only kept
+      * in the config for when games are launched from the TUI. In a plain
+      * (non-session) run, choosing also offers to install the donor's launch
+      * options right away; the donor screen then serves no further purpose.
+      */
+    def chooseDonor(g: SteamGame): Unit =
+      setDonor(g)
+      if wrap then
+        closeSteamConfirm = false
+        mode = MainMode // in-session choice is bookkeeping only
+      else
+        val installed = LauncherConfig.wrapLaunchOptions().exists(opts =>
+          SteamDiscovery.steamPath().exists(root =>
+            SteamConfig.getLaunchOptions(root, g.appId).contains(opts)))
+        if installed then
+          mode = MainMode
+          status = s"${g.name} is the donor — launch options already installed"
+        else
+          donorMsg = ""
+          closeSteamConfirm = true
+
+    /** Run from the donor screen's confirmation: closes Steam (with the
+      * user's blessing), writes the launch options while it is closed —
+      * Steam caches them in memory and may overwrite the file on exit — and
+      * restarts it.
+      */
+    def installLaunchOptions(): Unit =
+      closeSteamConfirm = false
+      (config.donor, SteamDiscovery.steamPath(), LauncherConfig.wrapLaunchOptions()) match
+        case (Some(d), Some(root), Some(opts)) =>
+          val wasRunning = SteamConfig.steamRunning
+          if wasRunning then
+            status = "closing Steam…"
+            redraw()
+            if !SteamConfig.shutdownSteam() then
+              status = "⚠ Steam did not shut down in time — launch options not written"
+              return
+          status = "writing launch options…"
+          redraw()
+          SteamConfig.setLaunchOptions(root, d.appId, opts) match
+            case Right(written) =>
+              status = s"launch options written to ${written.length} Steam account(s)"
+              if wasRunning then
+                status = "restarting Steam…"
+                redraw()
+                SteamConfig.startSteam() match
+                  case Right(()) =>
+                    mode = MainMode
+                    status = s"✅ ${d.name} donor-ready — give Steam a moment, then pick a game"
+                  case Left(err) =>
+                    mode = MainMode
+                    status = s"⚠ $err — launch options are saved; start Steam manually"
+              else
+                mode = MainMode
+                status = s"✅ ${d.name} donor-ready — launch options installed"
+            case Left(err) =>
+              if wasRunning then SteamConfig.startSteam()
+              status = "⚠ " + err
+        case (Some(_), _, None) =>
+          status = "⚠ cannot determine the running command to install as a launch option"
+        case _ =>
+          status = "⚠ Steam installation not found"
+
     def writeLaunchOptions(): Unit =
       SteamDiscovery.steamPath() match
         case None => donorMsg = "⚠ Steam installation not found"
@@ -498,7 +571,7 @@ object Tui:
             "⚠ quit Steam first, then press w again — Steam keeps launch options" +
             " in memory and overwrites this file on exit"
         case Some(root) =>
-          (config.donor, SelfPath.wrapLaunchOptions()) match
+          (config.donor, LauncherConfig.wrapLaunchOptions()) match
             case (Some(d), Some(opts)) =>
               SteamConfig.setLaunchOptions(root, d.appId, opts) match
                 case Right(written) =>
@@ -570,11 +643,16 @@ object Tui:
 
         case DonorMode =>
           k match
-            case Up => move(-1)
-            case Char('k') => move(-1)
-            case Down => move(1)
-            case Char('j') => move(1)
-            case Enter => donorVisible.lift(donorSel).foreach(setDonor)
+            case Up if !closeSteamConfirm => move(-1)
+            case Char('k') if !closeSteamConfirm => move(-1)
+            case Down if !closeSteamConfirm => move(1)
+            case Char('j') if !closeSteamConfirm => move(1)
+            case Enter if closeSteamConfirm => installLaunchOptions()
+            case EscKey if closeSteamConfirm =>
+              closeSteamConfirm = false
+              donorMsg =
+                "okay — you can also set the launch options below manually in Steam"
+            case Enter => donorVisible.lift(donorSel).foreach(chooseDonor)
             case Char('w') => writeLaunchOptions()
             case Char('u') =>
               if config.donor.isDefined then

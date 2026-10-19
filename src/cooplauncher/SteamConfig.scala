@@ -3,7 +3,7 @@ package cooplauncher
 import java.io.File
 import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path, StandardCopyOption}
-import scala.sys.process.Process
+import scala.sys.process.{Process, ProcessLogger}
 
 /** Sets a game's Steam launch options by editing Steam's per-account
   * localconfig.vdf (userdata/<account>/config/localconfig.vdf) — the only
@@ -13,6 +13,8 @@ import scala.sys.process.Process
   * when it exits — hence the backup and the warning).
   */
 object SteamConfig:
+
+  private val Quiet = ProcessLogger(_ => ())
 
   def localConfigPaths(steamRoot: File): List[Path] =
     val userdata = new File(steamRoot, "userdata")
@@ -25,6 +27,30 @@ object SteamConfig:
   def steamRunning: Boolean =
     try Process(Seq("pgrep", "-x", "steam")).! == 0
     catch case _: Exception => false
+
+  /** Asks the running Steam client to exit gracefully (`steam -shutdown`)
+    * and returns whether the process is truly gone before the wait runs out.
+    * (Timeout is overridable for tests.)
+    */
+  def shutdownSteam(): Boolean =
+    try Process(Seq("steam", "-shutdown")).!(Quiet)
+    catch case _: Exception => ()
+    val timeout = sys.env.get("COOP_STEAM_SHUTDOWN_TIMEOUT_MS")
+      .flatMap(_.toLongOption)
+      .getOrElse(60L * 1000)
+    val end = System.currentTimeMillis() + timeout
+    while steamRunning && System.currentTimeMillis() < end do Thread.sleep(400)
+    !steamRunning
+
+  /** Starts the Steam client detached from this process, so it survives the
+    * launcher (and its terminal) exiting.
+    */
+  def startSteam(): Either[String, Unit] =
+    try
+      Process(Seq("sh", "-c", "nohup steam >/dev/null 2>&1 &")).run(Quiet)
+      Right(())
+    catch
+      case e: Exception => Left(if e.getMessage != null then e.getMessage else e.toString)
 
   /** The game's LaunchOptions from the first account config that has an entry. */
   def getLaunchOptions(steamRoot: File, appId: String): Option[String] =

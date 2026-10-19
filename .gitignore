@@ -7,3 +7,6 @@ metals.sbt
 /cooplauncher
 /cooplauncher.exe
 out/
+cooplauncher.app
+cooplauncher
+*.jar

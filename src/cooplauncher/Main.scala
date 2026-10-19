@@ -11,7 +11,7 @@ import scala.sys.process.Process
     case "--list" :: _ =>
       listGames()
     case "--wrap-options" :: _ =>
-      SelfPath.wrapLaunchOptions() match
+      LauncherConfig.wrapLaunchOptions() match
         case Some(opts) => println(opts)
         case None =>
           System.err.println("cannot determine the running command")

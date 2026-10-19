@@ -63,7 +63,7 @@ Run without arguments for the interactive TUI:
 | `esc` | clear filter / cancel |
 | `+` / `-` | banner size |
 | `e` | change executable for selected game |
-| `d` | donor game setup (pick a Remote Play Together host) |
+| `d` | donor game setup (pick a Remote Play Together host; confirming installs its launch options, closing and restarting Steam after your OK) |
 | `r` | rescan Steam library |
 | `?` | help & credits |
 | `q` / `ctrl-c` | quit |
@@ -84,19 +84,23 @@ Games launched through Steam log to Steam itself.
 ### The donor game
 
 1. Run the launcher and press `d`
-2. Pick a game to use as the host (RetroArch is a common choice) and press `enter`
-3. The donor screen shows a launch-options line — open that game's Steam
-   properties (General → Launch Options) and paste it:
+2. Pick a game to use as the host (RetroArch is a common choice) and press
+   `enter`. The launcher offers to install its launch options automatically:
+   confirming closes Steam, writes the options to `localconfig.vdf` while it
+   is off, and restarts Steam — no manual editing, and the step is skipped
+   entirely if the options are already in place.
+3. Pick any game in the main screen and press `enter`. The launcher asks
+   Steam to start the **donor**; the `--wrap` launch option then runs Coop
+   Launcher inside the donor's process tree and starts your pick there, so
+   friends can join even if the game has no Remote Play Together support of
+   its own.
+
+The launch-option line the `w` action (donor screen) writes — or you can
+paste manually (donor's Properties → General → Launch Options) — looks like:
 
    ```
    /path/to/cooplauncher --wrap %command%
    ```
-
-4. Launch the **donor** from your Steam library. Steam runs Coop Launcher as
-   part of the donor's launch, so Remote Play Together becomes available.
-   Pick the game you actually want to play — it starts inside the donor's
-   process tree, so friends can join even if the game has no Remote Play
-   Together support of its own.
 
 Launching is always donor-routed: pressing `enter` on a game in the main
 screen asks Steam to start the donor and hands over your pick, so a donor

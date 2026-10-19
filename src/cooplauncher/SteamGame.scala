@@ -51,6 +51,7 @@ object GameRunner:
     * inside the donor's process tree.
     */
   def requestViaDonor(donor: DonorGame, game: SteamGame): Either[String, String] =
+    LauncherConfig.refreshDevWrapper() // no-op for native binaries
     LauncherConfig.writePendingLaunch(game.appId) match
       case Left(err) => Left(err)
       case Right(_) =>

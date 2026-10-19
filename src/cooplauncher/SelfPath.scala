@@ -23,16 +23,6 @@ object SelfPath:
         case _ => None
     catch case _: Throwable => get().map(p => Vector(p))
 
-  def wrapPrefix(): Option[String] =
-    tokens().map(ts => ts.map(quote).mkString(" "))
-
-  /** Text to install as a Steam launch option: this current command followed
-    * by the wrapper flag and Steam's placeholder for the donor's own command
-    * (which is deliberately not executed).
-    */
-  def wrapLaunchOptions(): Option[String] =
-    wrapPrefix().map(_ + " --wrap %command%")
-
   /** POSIX-safe single-quote quoting. */
   def quote(s: String): String =
     "'" + s.replace("'", "'\\''") + "'"
