@@ -157,12 +157,20 @@ with a clear message, not silently:
 - **Steam launch options.** Launching through the donor requires the
   donor's Steam launch options to contain the `--wrap` wrapper line; the
   launch is refused with guidance otherwise.
-  - The `w` action writes the *exact command currently running* (for a
-    development jar that's `<java> -jar <jar> --wrap %command%`; for the
-    packaged binary, just its path). If you later install the launcher
-    somewhere else — e.g. the CI-built native binary — press `w` again from
-    that binary so the launch option follows it. Also keep the launcher at
-    a stable path, not a temporary build directory.
+  - The `w` action (and the donor confirm flow) write the *exact command
+    currently running* — for the packaged binary, just its path. If you
+    later install the launcher somewhere else — e.g. the CI-built native
+    binary — re-confirm the donor (or press `w`) again from that binary so
+    the launch option follows it. Also keep the launcher at a stable path,
+    not a temporary build directory.
+  - Development runs (`scala-cli run`) cannot be trimmed to a single
+    command, so they instead get a small `dev-wrapper.sh` under the config
+    directory that reproduces the run. scala-cli's `.app` launching form
+    contains its own bootstrap (the classpath and shell header are glued
+    into the file), so the wrapper replay executes that `.app` directly
+    with the recording JDK put on PATH. This wrapper is refreshed on every
+    donor launch, so stale snapshots are not a concern in dev; but the
+    clean, dependency-free option is running the native binary.
   - Write launch options **only while Steam is closed**: while Steam runs,
     it keeps launch options in memory — it won't see the change, may
     rewrite the file on exit (discarding it), and `steam -applaunch` then
