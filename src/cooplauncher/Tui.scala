@@ -84,11 +84,11 @@ object Tui:
     "'" + s.replace("'", "'\\''") + "'"
 
   def reExecInTerminal(): Boolean =
-    SelfPath.get() match
+    SelfPath.tokens() match
       case None => false
-      case Some(bin) =>
+      case Some(cmds) =>
         if Platform.isMac then
-          val cmd = s"tell application \"Terminal\" to do script ${shellQuote(bin)}"
+          val cmd = s"tell application \"Terminal\" to do script ${shellQuote(cmds.mkString(" "))}"
           Process(Seq("osascript", "-e", cmd)).!(Quiet)
           true
         else
@@ -104,13 +104,13 @@ object Tui:
             case Some(t) =>
               val ok = t match
                 case "gnome-terminal" =>
-                  Process(Seq(t, "--", bin)).!(Quiet) == 0
+                  Process(t +: "--" +: cmds).!(Quiet) == 0
                 case "konsole" =>
-                  Process(Seq(t, "-e", bin)).!(Quiet) == 0
+                  Process(t +: "-e" +: cmds).!(Quiet) == 0
                 case "xfce4-terminal" =>
-                  Process(Seq(t, "-x", bin)).!(Quiet) == 0
+                  Process(t +: "-x" +: cmds).!(Quiet) == 0
                 case _ =>
-                  Process(Seq(t, "-e", bin)).!(Quiet) == 0
+                  Process(t +: "-e" +: cmds).!(Quiet) == 0
               ok
 
   private final class Prefetcher(width: () => Int, redraw: () => Unit)
@@ -270,11 +270,11 @@ object Tui:
           lines += Dim + "  enter: set as donor · w: write launch options · u: clear · esc: back" + Reset
           val msg = if donorMsg.isEmpty then None else Some(PathFg + "  " + donorMsg + Reset)
           msg.foreach(lines += _)
-          val wrapHint = (config.donor, SelfPath.get()) match
-            case (Some(d), Some(self)) => List(
+          val wrapHint = (config.donor, SelfPath.wrapPrefix()) match
+            case (Some(d), Some(prefix)) => List(
               Dim + s"""  so it grants Remote Play Together, set "${d.name}"'s Steam
               |  launch options (Properties → General) to:""".stripMargin + Reset,
-              Accent + "  " + fit(s"$self --wrap %command%", cols) + Reset
+              Accent + "  " + fit(s"$prefix --wrap %command%", cols) + Reset
             )
             case _ => Nil
           wrapHint.foreach(lines += _)
@@ -491,16 +491,23 @@ object Tui:
       applyFilter()
 
     def writeLaunchOptions(): Unit =
-      (config.donor, SelfPath.get(), SteamDiscovery.steamPath()) match
-        case (Some(d), Some(self), Some(root)) =>
-          SteamConfig.setLaunchOptions(root, d.appId, s"$self --wrap %command%") match
-            case Right(written) =>
-              donorMsg = s"launch options written to ${written.length} Steam account(s)" +
-                (if SteamConfig.steamRunning then " — restart Steam to apply" else "")
-            case Left(err) => donorMsg = "⚠ " + err
-        case (Some(_), _, None) => donorMsg = "⚠ Steam installation not found"
-        case (Some(_), None, _) => donorMsg = "⚠ cannot locate the launcher binary"
-        case _ => donorMsg = "⚠ set a donor first (enter)"
+      SteamDiscovery.steamPath() match
+        case None => donorMsg = "⚠ Steam installation not found"
+        case Some(root) if SteamConfig.steamRunning =>
+          donorMsg =
+            "⚠ quit Steam first, then press w again — Steam keeps launch options" +
+            " in memory and overwrites this file on exit"
+        case Some(root) =>
+          (config.donor, SelfPath.wrapLaunchOptions()) match
+            case (Some(d), Some(opts)) =>
+              SteamConfig.setLaunchOptions(root, d.appId, opts) match
+                case Right(written) =>
+                  donorMsg = s"launch options written to ${written.length} Steam account(s)" +
+                    " — they apply the next time Steam starts"
+                case Left(err) => donorMsg = "⚠ " + err
+            case (Some(_), None) =>
+              donorMsg = "⚠ cannot determine the running command to install as a launch option"
+            case _ => donorMsg = "⚠ set a donor first (enter)"
 
     def adjustBanner(d: Int): Unit =
       val (_, c) = term.size

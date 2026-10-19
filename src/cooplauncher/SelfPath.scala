@@ -6,6 +6,48 @@ import scala.sys.process.{Process, ProcessLogger}
 object SelfPath:
   private val Quiet = ProcessLogger(_ => ())
 
+  /** The exact command that is currently running — the executable plus its
+    * arguments — so another process can reproduce it. A development run
+    * attaches "-jar <jar>" to the java binary; a packaged native binary is a
+    * single token.
+    */
+  def tokens(): Option[Vector[String]] =
+    try
+      val info = java.lang.ProcessHandle.current().info()
+      (opt(info.command), opt(info.arguments)) match
+        case (Some(cmd), args) =>
+          Some(args match
+            case Some(as) if as.nonEmpty =>
+              (cmd +: as.toVector).map(absolutizeToken)
+            case _ => Vector(cmd))
+        case _ => None
+    catch case _: Throwable => get().map(p => Vector(p))
+
+  def wrapPrefix(): Option[String] =
+    tokens().map(ts => ts.map(quote).mkString(" "))
+
+  /** Text to install as a Steam launch option: this current command followed
+    * by the wrapper flag and Steam's placeholder for the donor's own command
+    * (which is deliberately not executed).
+    */
+  def wrapLaunchOptions(): Option[String] =
+    wrapPrefix().map(_ + " --wrap %command%")
+
+  /** POSIX-safe single-quote quoting. */
+  def quote(s: String): String =
+    "'" + s.replace("'", "'\\''") + "'"
+
+  private def opt[A](o: java.util.Optional[A]): Option[A] =
+    if o.isPresent then Some(o.get) else None
+
+  /** Launch options run with the game folder as working directory, so any
+    * argument naming an existing relative path must be resolved now.
+    */
+  private def absolutizeToken(t: String): String =
+    if t.nonEmpty && !t.startsWith("/") && !t.startsWith("-") &&
+        new File(t).isFile then new File(t).getAbsolutePath
+    else t
+
   def get(): Option[String] =
     if Platform.isMac then viaPs()
     else

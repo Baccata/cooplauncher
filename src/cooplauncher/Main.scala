@@ -10,6 +10,11 @@ import scala.sys.process.Process
       printHelp()
     case "--list" :: _ =>
       listGames()
+    case "--wrap-options" :: _ =>
+      SelfPath.wrapLaunchOptions() match
+        case Some(opts) => println(opts)
+        case None =>
+          System.err.println("cannot determine the running command")
     case "--banner" :: appId :: _ =>
       showBanner(appId)
     case "--launch" :: target :: _ =>
@@ -31,6 +36,8 @@ private def printHelp(): Unit =
       |                              the TUI launches games inside the donor's
       |                              process tree so Remote Play Together applies
       |  cooplauncher --list         list discovered Steam games
+      |  cooplauncher --wrap-options print the --wrap launch option to set
+      |                              manually on a donor game
       |  cooplauncher --help         this help
       |
       |Environment:

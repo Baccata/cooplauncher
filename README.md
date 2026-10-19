@@ -152,8 +152,19 @@ with a clear message, not silently:
   game must be exec'd directly as a child.
 - **Steam launch options.** Launching through the donor requires the
   donor's Steam launch options to contain the `--wrap` wrapper line; the
-  launch is refused with guidance otherwise. Steam writes those options to
-  `localconfig.vdf` when you set them in-game via the donor screen (`w`).
+  launch is refused with guidance otherwise.
+  - The `w` action writes the *exact command currently running* (for a
+    development jar that's `<java> -jar <jar> --wrap %command%`; for the
+    packaged binary, just its path). If you later install the launcher
+    somewhere else — e.g. the CI-built native binary — press `w` again from
+    that binary so the launch option follows it. Also keep the launcher at
+    a stable path, not a temporary build directory.
+  - Write launch options **only while Steam is closed**: while Steam runs,
+    it keeps launch options in memory — it won't see the change, may
+    rewrite the file on exit (discarding it), and `steam -applaunch` then
+    starts the donor *without* the wrapper. That failure looks like the
+    donor (or nothing) starting and the pick never launching; the queued
+    pick expires after 5 minutes.
 
 ### Environment variables
 
