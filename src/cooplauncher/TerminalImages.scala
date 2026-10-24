@@ -38,34 +38,54 @@ object TerminalImages:
     sys.env.getOrElse("PATH", "").split(':').exists(p =>
       p.nonEmpty && new File(p, bin).canExecute)
 
+  /** Rendered banner art plus the number of terminal rows it occupies:
+    * text lines for chafa/blocks output, image cells for the native
+    * protocols. Callers reserve exactly this much space.
+    */
+  final case class Rendered(text: String, rows: Int)
+
   def renderBanner(
       bytes: Array[Byte],
       cols: Int,
-      s: Strategy = strategy
-  ): Option[String] =
+      s: Strategy = strategy,
+      maxRows: Int = Int.MaxValue
+  ): Option[Rendered] =
     if bytes == null || bytes.isEmpty then None
     else
       s match
         case Off => None
         case Chafa =>
-          JpegDecoder.decode(bytes).flatMap(img =>
-            viaChafa(bytes, cols, rowsFor(cols, img)))
+          JpegDecoder.decode(bytes).flatMap { img =>
+            viaChafa(bytes, cols, rowsCapped(cols, img, maxRows))
+              .map(text => Rendered(text, math.min(text.linesIterator.length, maxRows)))
+          }
         case Iterm =>
-          JpegDecoder.decode(bytes).map(img =>
-            itermEscape(bytes, rowsFor(cols, img)))
+          JpegDecoder.decode(bytes).map { img =>
+            val rows = rowsCapped(cols, img, maxRows)
+            Rendered(itermEscape(bytes, rows), rows)
+          }
         case Kitty =>
-          JpegDecoder.decode(bytes).map(img =>
-            kittyEscape(img, cols, rowsFor(cols, img)))
+          JpegDecoder.decode(bytes).map { img =>
+            val rows = rowsCapped(cols, img, maxRows)
+            Rendered(kittyEscape(img, cols, rows), rows)
+          }
         case Sixel =>
-          JpegDecoder.decode(bytes).map(img =>
-            sixelEscape(resizeSmart(img, cols * 8, rowsFor(cols, img) * 16)))
+          JpegDecoder.decode(bytes).map { img =>
+            val rows = rowsCapped(cols, img, maxRows)
+            Rendered(sixelEscape(resizeSmart(img, cols * 8, rows * 16)), rows)
+          }
         case Blocks =>
-          JpegDecoder.decode(bytes).map(img =>
-            halfBlocks(resizeSmart(img, cols, rowsFor(cols, img) * 2)))
+          JpegDecoder.decode(bytes).map { img =>
+            val rows = rowsCapped(cols, img, maxRows)
+            Rendered(halfBlocks(resizeSmart(img, cols, rows * 2)), rows)
+          }
 
   def rowsFor(cols: Int, img: RgbImage): Int =
     val r = math.round(cols.toFloat * img.height / img.width / 2f)
     math.min(math.max(r, 4), 22)
+
+  private def rowsCapped(cols: Int, img: RgbImage, maxRows: Int): Int =
+    math.min(rowsFor(cols, img), math.max(maxRows, 1))
 
   def kittyClearImages(): String = "\u001b_Ga=d,d=i\u001b\\"
 

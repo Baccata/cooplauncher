@@ -50,7 +50,7 @@ private def showBanner(appId: String): Unit =
     case Some(bytes) =>
       System.err.println(s"fetched ${bytes.length} bytes, jpeg=${JpegDecoder.decode(bytes).map(i => s"${i.width}x${i.height}").getOrElse("DECODE FAILED")}")
       TerminalImages.renderBanner(bytes, 90) match
-        case Some(art) => println(art)
+        case Some(art) => println(art.text)
         case None => System.err.println("no renderer produced output")
     case None =>
       System.err.println(s"no banner found for $appId")

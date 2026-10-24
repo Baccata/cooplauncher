@@ -113,14 +113,18 @@ object Tui:
                   Process(t +: "-e" +: cmds).!(Quiet) == 0
               ok
 
-  private final class Prefetcher(width: () => Int, redraw: () => Unit)
-      extends Thread:
+  private final class Prefetcher(
+      width: () => Int,
+      maxRows: () => Int,
+      redraw: () => Unit
+  ) extends Thread:
     setDaemon(true)
     private val queue = scala.collection.mutable.Queue.empty[String]
     private val requested = scala.collection.mutable.Set.empty[String]
-    private val cache = scala.collection.mutable.HashMap.empty[String, Option[String]]
+    private val cache = scala.collection.mutable.HashMap.empty[String, Option[TerminalImages.Rendered]]
 
-    def banner(appId: String): Option[String] = synchronized(cache.get(appId)).flatten
+    def banner(appId: String): Option[TerminalImages.Rendered] =
+      synchronized(cache.get(appId)).flatten
 
     def request(appId: String): Unit = synchronized {
       if requested.add(appId) then
@@ -141,7 +145,7 @@ object Tui:
         }
         val rendered =
           BannerFetcher.fetch(appId).flatMap(bytes =>
-            TerminalImages.renderBanner(bytes, width()))
+            TerminalImages.renderBanner(bytes, width(), maxRows = maxRows()))
         synchronized(cache(appId) = rendered)
         redraw()
 
@@ -211,9 +215,13 @@ object Tui:
     val (_, cols) = term.size
     var bannerWidth = math.min(math.max((cols * 4) / 5, 30), math.max(cols - 2, 30))
     var bannerCache: Prefetcher = null
-    val imageProtocol = TerminalImages.strategy match
-      case TerminalImages.Kitty | TerminalImages.Iterm | TerminalImages.Sixel => true
-      case _ => false
+
+    /** The preview area is always exactly this many rows — art is cropped or
+      * padded into it — so the list below never shifts when a banner loads,
+      * and the scroll window stays put.
+      */
+    def previewRows: Int =
+      math.min(math.max(math.round(bannerWidth * 215f / 460 / 2), 4), 22)
 
     def redraw(): Unit = lock.synchronized {
       val (rows, cols) = term.size
@@ -337,30 +345,21 @@ object Tui:
           val selected = visible.lift(sel)
           val selectedArt = selected.flatMap(g => bannerCache.banner(g.appId))
           val showPreview = rows >= 28 && selected.isDefined
-          val previewLines =
-            if !showPreview then 0
-            else
-              // Measure the preview height instead of estimating it: the old
-              // truncated guess (w*215/460/2) undershot the real banner by a
-              // row for many widths, pushing the whole frame past the screen
-              // edge and scrolling the terminal mid-redraw.
-              val rendered = selectedArt match
-                case Some(art) if !imageProtocol => art.linesIterator.length
-                case Some(_) => // kitty/iterm/sixel art occupies cells, not lines
-                  math.min(math.max(math.round(bannerWidth * 215f / 460 / 2), 4), 22)
-                case None => 2 // placeholder letter + name
-              rendered + 2
+          val previewLines = if showPreview then previewRows + 2 else 0
           val maxRows = math.max(rows - 6 - previewLines, 1)
 
           if showPreview && selected.isDefined then
             val g = selected.get
             selectedArt match
               case Some(art) =>
-                art.linesIterator.foreach(l => lines += "  " + l)
+                val shown = art.text.linesIterator.toList.take(previewRows)
+                shown.foreach(l => lines += "  " + l)
+                List.fill(previewRows - shown.size)("").foreach(lines += _)
               case None =>
                 val letter = if g.name.nonEmpty then g.name.take(1).toUpperCase else "?"
                 lines += DimPurple + s"  [ $letter ]" + Reset
                 lines += Dim + "  " + fit(g.name, cols - 4) + Reset
+                List.fill(previewRows - 2)("").foreach(lines += _)
             val exe = DonorOps.launchablePath(g, config)
               .getOrElse("Windows game — runs via Proton inside the donor session")
             lines += PathFg + "  " + fit(exe, cols - 4) + Reset
@@ -713,7 +712,7 @@ object Tui:
 
     term.enter()
     Runtime.getRuntime.addShutdownHook(new Thread(() => term.leave()))
-    bannerCache = new Prefetcher(() => bannerWidth, () => redraw())
+    bannerCache = new Prefetcher(() => bannerWidth, () => previewRows, () => redraw())
     bannerCache.start()
     RemotePlay.start { () =>
       lock.synchronized(recomputeDonorVisible())
