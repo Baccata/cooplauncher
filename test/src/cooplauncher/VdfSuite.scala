@@ -89,3 +89,24 @@ class VdfSuite extends munit.FunSuite:
     assertEquals(doc.updated(List("zzz", "b"), VdfNode.Str("x")),
       Left("missing section zzz"))
   }
+
+  test("key lookup is case-insensitive, like Steam's KeyValues") {
+    val doc = Vdf.parseDocument(
+      "\"UserLocalConfigStore\"\n{\n \"Software\"\n {\n  \"Valve\"\n  {\n   \"Steam\"\n   {\n    \"Apps\"\n    {\n     \"570\"\n     {\n      \"LastPlayed\" \"1234\"\n     }\n    }\n   }\n  }\n }\n}").get
+    assertEquals(doc.at(List("Software", "Valve", "Steam", "apps", "570", "LastPlayed")),
+      Some(VdfNode.Str("1234")))
+    val out = doc
+      .updated(List("Software", "Valve", "Steam", "apps", "570"),
+        VdfNode.Obj(List("LaunchOptions" -> VdfNode.Str("/opt/coop --wrap %command%"))))
+      .toOption.get
+    val encoded = Vdf.encode(out)
+    val back = Vdf.parseDocument(encoded).get
+    assertEquals(
+      back.at(List("Software", "Valve", "Steam", "Apps", "570", "LaunchOptions")),
+      Some(VdfNode.Str("/opt/coop --wrap %command%")))
+    // the pre-existing sibling key survives with its original casing
+    assertEquals(
+      back.at(List("Software", "Valve", "Steam", "Apps", "570", "LastPlayed")),
+      Some(VdfNode.Str("1234")))
+    assert(encoded.contains("\"Apps\""), "existing key casing must be preserved")
+  }

@@ -9,8 +9,11 @@ import java.io.File
 sealed trait VdfNode
 object VdfNode:
   final case class Obj(fields: List[(String, VdfNode)]) extends VdfNode:
+    /** Steam's KeyValues matches keys case-insensitively, and real files mix
+      * casings ("apps" in some dumps, "Apps" in others) — so must we.
+      */
     def get(key: String): Option[VdfNode] =
-      fields.collectFirst { case (k, v) if k == key => v }
+      fields.collectFirst { case (k, v) if k.equalsIgnoreCase(key) => v }
     def at(path: List[String]): Option[VdfNode] =
       path match
         case Nil => Some(this)
@@ -19,10 +22,12 @@ object VdfNode:
           else get(key).flatMap { case o: Obj => o.at(rest); case _ => None }
     def str(key: String): Option[String] =
       get(key).collect { case VdfNode.Str(s) => s }
-    /** Sets or replaces key in place, appending it when absent. */
+    /** Sets or replaces key in place (matching case-insensitively), appending
+      * it when absent.
+      */
     def updated(key: String, value: VdfNode): Obj =
-      if fields.exists(_._1 == key) then
-        Obj(fields.map(f => if f._1 == key then key -> value else f))
+      if fields.exists((k, _) => k.equalsIgnoreCase(key)) then
+        Obj(fields.map(f => if f._1.equalsIgnoreCase(key) then key -> value else f))
       else Obj(fields :+ (key -> value))
     /** Descends path and sets value there; missing or non-object intermediates fail. */
     def updated(path: List[String], value: VdfNode): Either[String, Obj] =
