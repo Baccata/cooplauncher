@@ -96,14 +96,14 @@ class VdfSuite extends munit.FunSuite:
     assertEquals(doc.at(List("Software", "Valve", "Steam", "apps", "570", "LastPlayed")),
       Some(VdfNode.Str("1234")))
     // merge into the existing app object, exactly as SteamConfig.transform does
-    val out = doc.at(List("Software", "Valve", "Steam", "apps")) match
-      case Some(apps: VdfNode.Obj) =>
-        apps.get("570") match
-          case Some(app: VdfNode.Obj) =>
-            doc.updated(List("Software", "Valve", "Steam", "apps", "570"),
-              app.updated("LaunchOptions", VdfNode.Str("/opt/coop --wrap %command%")))
-          case other => fail(s"expected 570 object, got $other")
-      case other => fail(s"expected apps object, got $other")
+    val apps = doc.at(List("Software", "Valve", "Steam", "apps")).collect {
+      case o: VdfNode.Obj => o
+    }.getOrElse(fail("expected apps object"))
+    val app = apps.get("570").collect { case o: VdfNode.Obj => o }
+      .getOrElse(fail("expected 570 object"))
+    val out = doc
+      .updated(List("Software", "Valve", "Steam", "apps", "570"),
+        app.updated("LaunchOptions", VdfNode.Str("/opt/coop --wrap %command%")))
       .toOption.get
     val encoded = Vdf.encode(out)
     val back = Vdf.parseDocument(encoded).get

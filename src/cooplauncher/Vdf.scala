@@ -23,11 +23,12 @@ object VdfNode:
     def str(key: String): Option[String] =
       get(key).collect { case VdfNode.Str(s) => s }
     /** Sets or replaces key in place (matching case-insensitively), appending
-      * it when absent.
+      * it when absent. A matched key keeps its original spelling, so touched
+      * files don't get gratuitously recased.
       */
     def updated(key: String, value: VdfNode): Obj =
       if fields.exists((k, _) => k.equalsIgnoreCase(key)) then
-        Obj(fields.map(f => if f._1.equalsIgnoreCase(key) then key -> value else f))
+        Obj(fields.map(f => if f._1.equalsIgnoreCase(key) then f._1 -> value else f))
       else Obj(fields :+ (key -> value))
     /** Descends path and sets value there; missing or non-object intermediates fail. */
     def updated(path: List[String], value: VdfNode): Either[String, Obj] =
